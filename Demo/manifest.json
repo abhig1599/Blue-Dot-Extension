@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Blue Dot",
+  "version": "2.1.0",
+  "description": "Blue Dot: inspect a site's design system (colours, type, spacing), pick elements, and live-try changes. Edits are temporary unless you save a session.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Blue Dot",
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png",
+      "32": "icons/32.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png",
+    "32": "icons/32.png"
+  }
+}
