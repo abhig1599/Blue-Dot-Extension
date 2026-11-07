@@ -768,6 +768,32 @@
     .crow .cw{flex:1;min-width:0;background:#2c2c2c;border-radius:6px;height:30px;padding:0 8px}
     .crow .ck{width:44px;flex:none;color:#a8a8a8;font:11.5px Inter,system-ui,sans-serif;text-align:right}
     .crow .vn{flex:1;min-width:0;margin:0;color:#a8a8a8;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}.crow{flex-wrap:nowrap}
+    .fgrid4{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+    .fgrid4 .fld{padding:0 5px;gap:3px}
+    .fgrid4 .fld .fk{min-width:0;width:10px;text-align:center;font-size:10px;flex:none}
+    .fgrid4 .inp{font-size:10.5px}
+    .fk2{font:11.5px Inter,system-ui,sans-serif;color:#a8a8a8;margin:0 0 6px}
+    .fselect{all:unset;box-sizing:border-box;flex:1;min-width:0;color:#fff;font:12px Inter,system-ui,sans-serif;cursor:pointer;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;padding-right:14px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a8a8a8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right center}
+    .fselect option{background:#2c2c2c;color:#fff}
+    .seg{display:flex;gap:5px}
+    .sbtn{all:unset;box-sizing:border-box;flex:1;height:28px;background:#2c2c2c;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:#a8a8a8}
+    .sbtn:hover{background:#383838;color:#fff}
+    .sbtn.on{background:#0d99ff;color:#fff}
+    .hexin{all:unset;box-sizing:border-box;flex:1;min-width:0;color:#fff;font:12px ui-monospace,"SF Mono",Menlo,monospace}
+    .pct{all:unset;box-sizing:border-box;width:34px;flex:none;color:#a8a8a8;font:11px ui-monospace,"SF Mono",Menlo,monospace;text-align:right}
+    .crow .ck2{width:38px;flex:none;color:#a8a8a8;font:11.5px Inter,system-ui,sans-serif;text-align:left}
+    .vrow{margin:0 0 6px 46px}
+    .vn2{font:10.5px ui-monospace,"SF Mono",Menlo,monospace;color:#8c8c8c;word-break:break-all}
+    .fgrid.wsel2{grid-template-columns:1fr 1.3fr}
+    .fselect{font-size:11.5px;padding-right:12px}
+    .fk svg{width:14px;height:14px;display:block}
+    .fk.ico{min-width:16px;width:16px;display:flex;align-items:center;justify-content:center}
+    .gprev{margin-top:8px;background:#2c2c2c;border-radius:8px;padding:12px 14px;color:#fff;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .footrow{display:flex;gap:6px;margin-top:8px}
+    .footrow .pbtn{height:30px;line-height:30px;font-size:11.5px}
+    .fhdr{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
+    .fhdr .ft{font:600 13px Inter,system-ui,sans-serif;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .fhdr .fs{font:11px Inter,system-ui,sans-serif;color:#a8a8a8}
     #rp{width:300px}
     #rp .esec:first-of-type{border-top:0}
     @keyframes dsxPop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
@@ -1852,52 +1878,103 @@
     if (p === "padding" || p === "margin") { const v = ["top", "right", "bottom", "left"].map((s) => cs.getPropertyValue(`${p}-${s}`)); return v.every((x) => x === v[0]) ? v[0] : v.join(" "); }
     return cs.getPropertyValue(p);
   };
+  const WEIGHTS = [["100", "Thin"], ["200", "Extra light"], ["300", "Light"], ["400", "Regular"], ["500", "Medium"], ["600", "Semibold"], ["700", "Bold"], ["800", "Extra bold"], ["900", "Black"]];
+  const rgbaOf = (c) => { const m = c && c.match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(/[,\s/]+/).filter(Boolean).map(Number); if (p.length < 3 || isNaN(p[0])) return null; return { r: p[0], g: p[1], b: p[2], a: p.length >= 4 ? Math.round(p[3] * 100) / 100 : 1 }; };
+  const hexA = (hex, a) => { if (!hex) return "transparent"; if (a >= 1) return hex; const r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16); return `rgba(${r}, ${g}, ${b}, ${a})`; };
   const showElement = (el) => {
     selected = el;
     const cs = getComputedStyle(el), vm = buildVarMap(), sel = selectorOf(el), id = elId(el);
-    const fld = (label, prop, wide) => { const val = cssShort(cs, prop).split(",")[0].replace(/["']/g, ""); return `<label class="fld${wide ? " wide" : ""}"><span class="fk">${label}</span><input class="inp" data-p="${prop}" data-o="${esc(val)}" value="${esc(val)}"></label>`; };
+    const FICONS = { "font-size": "M4 7V4h16v3M12 4v16m-4 0h8", "line-height": "M3 6h18M3 12h18M3 18h18", "letter-spacing": "M4 5v14M20 5v14M8.5 15l3.5-7 3.5 7m-5.7-2.5h4.4", "font-family": "M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5", "W": "M8 5h8M5 5v14m14-14v14M8 19h8", "H": "M5 8v8M5 5h14M5 19h14M19 8v8" };
+    const FLABELS = { "font-size": "Font size", "line-height": "Line height", "letter-spacing": "Letter spacing", "font-family": "Font", "width": "Width", "height": "Height", "padding-top": "Padding top", "padding-right": "Padding right", "padding-bottom": "Padding bottom", "padding-left": "Padding left", "margin-top": "Margin top", "margin-right": "Margin right", "margin-bottom": "Margin bottom", "margin-left": "Margin left", "border-radius": "Corner radius", "opacity": "Opacity" };
+    const fld = (label, prop, wide) => { const oval = cssShort(cs, prop).split(",")[0].replace(/["']/g, ""); let val = oval; if (/^-?[\d.]+px$/.test(val)) val = val.slice(0, -2); const ic2 = FICONS[prop] ? `<span class="fk ico" title="${FLABELS[prop] || label}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${FICONS[prop]}"/></svg></span>` : `<span class="fk">${label}</span>`; return `<label class="fld${wide ? " wide" : ""}" title="${FLABELS[prop] || label}">${ic2}<input class="inp" data-p="${prop}" data-o="${esc(oval)}" value="${esc(val)}" spellcheck="false" aria-label="${FLABELS[prop] || label}"></label>`; };
+    const wsel = () => { const cur = String(parseInt(cs.fontWeight) || 400); const known = WEIGHTS.some(([v]) => v === cur); return `<label class="fld" title="Weight"><span class="fk ico" title="Font weight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h5a4 4 0 010 8H7zM7 12h6.5a4 4 0 010 8H7z"/></svg></span><select class="fselect" data-p="font-weight" data-o="${cur}" aria-label="Weight">${WEIGHTS.map(([v, n]) => `<option value="${v}"${v === cur ? " selected" : ""}>${n}</option>`).join("")}${known ? "" : `<option value="${cur}" selected>${cur}</option>`}</select></label>`; };
     const col = (label, prop) => {
-      const val = cssShort(cs, prop), hex = toHex(val), vars = hex ? vm.get(hex) || [] : [];
-      return `<div class="crow"><div class="cw"><label class="sw" style="background:${hex || "transparent"}"><input type="color" data-p="${prop}" data-o="${hex || ""}" value="${hex || "#ffffff"}"></label><span class="hex">${hex || "transparent"}</span>${vars.length ? `<span class="vn">${vars.map(esc).join(", ")}</span>` : ""}</div><span class="ck">${label}</span></div>`;
+      const v0 = cssShort(cs, prop), rgb = rgbaOf(v0), hex = toHex(v0), a = rgb ? rgb.a : 1, vars = hex ? vm.get(hex) || [] : [];
+      return `<div class="crow"><span class="ck2">${label}</span><div class="cw"><label class="sw" style="background:${hexA(hex, a)}"><input type="color" data-p="${prop}" data-o="${hex || ""}" data-a="${a}" value="${hex || "#ffffff"}" aria-label="${label}"></label><input class="hexin" data-hx="${prop}" value="${hex || "transparent"}" spellcheck="false" aria-label="${label} hex"><input class="pct" data-pct="${prop}" value="${Math.round(a * 100)}%" spellcheck="false" aria-label="${label} opacity"></div></div>${vars.length ? `<div class="vrow"><span class="vn2">${vars.map((v) => esc(v)).join(", ")}</span></div>` : ""}`;
     };
     const sec = (t, inner, extra) => `<section class="esec"><div class="eh"><h4>${t}</h4>${extra || ""}</div>${inner}</section>`;
-    const rows = sec("Typography", `<div id="etxrow"></div><div class="fgrid">${fld("Font", "font-family", true)}${fld("Size", "font-size")}${fld("Weight", "font-weight")}${fld("Line", "line-height")}${fld("Track", "letter-spacing")}</div>`)
+    const ta = cs.textAlign === "start" ? "left" : cs.textAlign === "end" ? "right" : cs.textAlign;
+    const ALIGNS = [["left", "M3 5h18M3 10h12M3 15h18M3 20h12"], ["center", "M3 5h18M6 10h12M3 15h18M6 20h12"], ["right", "M3 5h18M9 10h12M3 15h18M9 20h12"], ["justify", "M3 5h18M3 10h18M3 15h18M3 20h18"]];
+    const alignRow = `<div class="seg" id="eal">${ALIGNS.map(([v, d]) => `<button type="button" class="sbtn${ta === v ? " on" : ""}" data-v="${v}" aria-label="Align ${v}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="${d}"/></svg></button>`).join("")}</div>`;
+    const rows = sec("Layout", `<div class="fgrid">${fld("W", "width")}${fld("H", "height")}</div>`)
+      + sec("Spacing", `<div class="fk2">Padding</div><div class="fgrid4">${fld("T", "padding-top")}${fld("R", "padding-right")}${fld("B", "padding-bottom")}${fld("L", "padding-left")}</div><div class="fk2" style="margin-top:8px">Margin</div><div class="fgrid4">${fld("T", "margin-top")}${fld("R", "margin-right")}${fld("B", "margin-bottom")}${fld("L", "margin-left")}</div>`)
+      + sec("Typography", `<div class="fhdr"><span class="ft">${esc(cssShort(cs, "font-family").split(",")[0].replace(/["']/g, ""))}</span><span class="fs">${esc(el.tagName.toLowerCase())} \u00b7 ${/\b(72[01]|7[4-9]\d|[89]\d{2})\b/.test(cs.fontWeight) ? "Display" : parseFloat(cs.fontSize) >= 32 ? "Display" : parseFloat(cs.fontSize) >= 20 ? "Heading" : "Body"} \u00b7 ${Math.round(el.getBoundingClientRect().width)}px wide</span></div><div id="etxrow"></div><div class="fgrid wsel2">${fld("T", "font-size")}${wsel()}</div><div class="fgrid" style="margin-top:6px">${fld("LH", "line-height")}${fld("A", "letter-spacing")}</div><div style="margin-top:6px">${alignRow}</div><div class="gprev" style="font-family:${esc(cssShort(cs, "font-family"))};font-weight:${esc(cs.fontWeight)}">AaBbCcDdEeFfGgHh 0123456789</div><div class="footrow"><button class="pbtn sec2" id="ecss" type="button">Copy CSS</button></div>`)
       + sec("Colour", col("Text", "color") + col("Fill", "background-color") + col("Stroke", "border-top-color"))
-      + sec("Layout", `<div class="fgrid">${fld("Padding", "padding", true)}${fld("Margin", "margin", true)}</div>`)
-      + sec("Appearance", `<div class="fgrid">${fld("Radius", "border-radius")}</div>`)
+      + sec("Appearance", `<div class="fgrid">${fld("Radius", "border-radius")}${fld("Opacity", "opacity")}</div>`)
       + sec("Motion", `<button class="pbtn sec2" id="emo" style="width:100%">Inspect motion on this element</button>`);
     rp.innerHTML = `<div class="ph"><b>${esc(sel)}</b><span>${Math.round(el.getBoundingClientRect().width)} \u00d7 ${Math.round(el.getBoundingClientRect().height)}</span></div><div id="elint"></div>${rows}<div style="height:10px"></div>`;
     rp.classList.add("show");
     rp.querySelector("#etxrow").innerHTML = `<button class="pbtn sec2" id="etx" ${editable(el) ? "" : 'data-tip="This element has other elements inside it. Pick the one that holds the text."'} style="width:100%;margin-bottom:8px;${editable(el) ? "" : "opacity:.5"}">Edit text on page</button>`;
     rp.querySelector("#etx").onclick = () => startTextEdit(el);
+    rp.querySelector("#ecss").onclick = () => { const c2 = getComputedStyle(el); const css = `font-family: ${c2.fontFamily};\nfont-size: ${c2.fontSize};\nfont-weight: ${c2.fontWeight};\nline-height: ${c2.lineHeight};\nletter-spacing: ${c2.letterSpacing};\ncolor: ${c2.color};\ntext-align: ${c2.textAlign};`; navigator.clipboard.writeText(css).then(() => { rp.querySelector("#ecss").textContent = "Copied"; setTimeout(() => { const b = rp.querySelector("#ecss"); if (b) b.textContent = "Copy CSS"; }, 1200); }).catch(() => { rp.querySelector("#ecss").textContent = "Copy failed"; }); };
     rp.querySelector("#emo").onclick = () => { setPicking(false); showMotion(el); };
     const relint = () => renderLint(rp.querySelector("#elint"), lintMany([el, ...[...el.children].slice(0, 8)]));
     relint();
-    rp.querySelectorAll("[data-p]").forEach((inp) => {
+    const setColour = (cInp, to) => {
+      const p = cInp.dataset.p, a = parseFloat(cInp.dataset.a);
+      const val = hexA(to, isNaN(a) ? 1 : a);
+      if (p === "border-top-color") ["top", "right", "bottom", "left"].forEach((s) => setProp(el, `border-${s}-color`, val)); else setProp(el, p, val);
+      render();
+      cInp.parentElement.style.background = val;
+      const cw = cInp.closest(".cw"); if (cw) { const hx = cw.querySelector(".hexin"); if (hx && hx.value !== to) hx.value = to; }
+      relint();
+    };
+    rp.querySelectorAll("input[data-p]").forEach((inp) => {
       const p = inp.dataset.p, o = inp.dataset.o, label = `${sel} ${p.replace("background-color", "background").replace("border-top-color", "border colour").replace(/-/g, " ")}`;
       const key = `e:${id}:${p}`;
       if (inp.type === "color") {
-        inp.addEventListener("input", () => {
-          const to = inp.value;
-          if (p === "border-top-color") ["top", "right", "bottom", "left"].forEach((s) => setProp(el, `border-${s}-color`, to)); else setProp(el, p, to);
-          render();
-          inp.parentElement.style.background = to; inp.closest(".cw").querySelector(".hex").textContent = to;
-          relint();
-          record(key, label, o || "transparent", to, "colour");
-          applyAllChip(inp, el, p, o, to);
-        });
+        inp.addEventListener("input", () => { const to = inp.value; setColour(inp, to); record(key, label, o || "transparent", to, "colour"); applyAllChip(inp, el, p, o, to); });
       } else {
-        inp.addEventListener("change", () => {
+        const applyVal = () => {
           let v = inp.value.trim(); if (!v) return;
-          if (/^-?[\d.]+$/.test(v) && p !== "font-weight") v += "px";
-          if (p === "font-family" && /\s/.test(v) && !/["',]/.test(v)) v = `"${v}"`;
-          setProp(el, p, v); render();
-          relint();
-          record(key, label, o, v.replace(/["']/g, ""), "text");
+          if (p === "opacity") { v = String(Math.min(1, Math.max(0, parseFloat(v) || 0))); inp.value = v; }
+          else if (/^-?[\d.]+$/.test(v) && !/^(font-weight|font-family|line-height)$/.test(p)) v += "px";
+          setProp(el, p, v); render(); relint(); record(key, label, o, v, "text");
+        };
+        inp.addEventListener("change", applyVal);
+        inp.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { inp.blur(); return; }
+          if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+          const m = inp.value.match(/^(-?[\d.]+)(.*)$/); if (!m) return;
+          e.preventDefault();
+          const d = (e.shiftKey ? 10 : 1) * (e.key === "ArrowUp" ? 1 : -1);
+          inp.value = Math.round((parseFloat(m[1]) + d) * 100) / 100 + m[2];
+          applyVal();
         });
-        inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); });
       }
     });
+    rp.querySelectorAll("select[data-p]").forEach((inp) => {
+      const p = inp.dataset.p, o = inp.dataset.o;
+      inp.addEventListener("change", () => { setProp(el, p, inp.value); render(); relint(); record(`e:${id}:${p}`, `${sel} font weight`, o, inp.value, "text"); });
+    });
+    rp.querySelectorAll(".hexin").forEach((hx) => {
+      const prop = hx.dataset.hx, cw = hx.closest(".cw"), cInp = cw.querySelector('input[type="color"]');
+      hx.addEventListener("change", () => {
+        let v = hx.value.trim().toLowerCase();
+        if (/^[0-9a-f]{6}$/.test(v)) v = "#" + v;
+        else if (/^#?[0-9a-f]{3}$/.test(v)) v = "#" + v.replace("#", "").split("").map((c) => c + c).join("");
+        if (!/^#[0-9a-f]{6}$/.test(v)) { hx.value = toHex(cssShort(getComputedStyle(el), prop)) || "transparent"; return; }
+        cInp.value = v; setColour(cInp, v); record(`e:${id}:${prop}`, `${sel} ${prop.replace("background-color", "background").replace("border-top-color", "border colour").replace(/-/g, " ")}`, cInp.dataset.o || "transparent", v, "colour"); applyAllChip(cInp, el, prop, cInp.dataset.o, v);
+      });
+      hx.addEventListener("keydown", (e) => { if (e.key === "Enter") hx.blur(); });
+    });
+    rp.querySelectorAll(".pct").forEach((pc) => {
+      const cw = pc.closest(".cw"), cInp = cw.querySelector('input[type="color"]');
+      const applyPct = () => {
+        const a0 = parseFloat(pc.value.replace("%", "").trim());
+        if (isNaN(a0)) { pc.value = Math.round((parseFloat(cInp.dataset.a) || 1) * 100) + "%"; return; }
+        const a = Math.min(100, Math.max(0, a0)) / 100;
+        cInp.dataset.a = a; pc.value = Math.round(a * 100) + "%";
+        setColour(cInp, cInp.value);
+      };
+      pc.addEventListener("change", applyPct);
+      pc.addEventListener("keydown", (e) => { if (e.key === "Enter") pc.blur(); });
+    });
+    const eal = rp.querySelector("#eal");
+    if (eal) eal.querySelectorAll(".sbtn").forEach((b) => b.addEventListener("click", () => {
+      eal.querySelectorAll(".sbtn").forEach((x) => x.classList.remove("on")); b.classList.add("on");
+      setProp(el, "text-align", b.dataset.v); render(); relint(); record(`e:${id}:text-align`, `${sel} text align`, ta, b.dataset.v, "text");
+    }));
   };
   const target = (e) => { const cp = e.composedPath(); if (cp.includes(host)) return null; const t = cp[0]; return t && t.nodeType === 1 && !isUI(t) && t !== document.documentElement && t !== document.body ? t : null; };
   const onMove = (e) => {
