@@ -2387,14 +2387,19 @@
   };
   const primaryEffect = (m, el, probe) => {
     if (m.samples && m.samples.kfs.length > 1 && !m.anims.some((a) => a.kfs.length > 1 && !a.idle)) return { kind: "sampled", label: "Sampled while you watched (approximate)", kfs: m.samples.kfs, timing: m.samples.timing, trigger: m.samples.trigger };
-    const a = m.anims.find((x) => x.kfs.length > 1);
-    if (a) return { kind: "anim", label: a.type + ": " + a.name, kfs: a.kfs, timing: a.timing, anim: a, trigger: a.idle ? "set on the element (runs when it renders)" : "running now" };
-    if (m.hover.length && m.trans.length) {
+    const a = m.anims.find((x) => x.kfs.length > 1 && x.type !== "CSS transition") || m.anims.find((x) => x.kfs.length > 1);
+    const hoverEff = () => {
       const cs = getComputedStyle(el), decl = Object.assign({}, ...m.hover.map((h) => h.decls));
       const base = {}; Object.keys(decl).forEach((k) => { base[k] = cs.getPropertyValue(k); });
       const t = m.trans[0];
       return { kind: "hover", label: "Hover transition", kfs: [{ offset: 0, props: base }, { offset: 1, props: decl }], timing: { duration: t.duration, delay: t.delay, easing: t.easing, iterations: "infinite", direction: "alternate", fill: "both" }, trigger: "hover" };
+    };
+    if (a && !(a.type === "CSS transition" && m.hover.length && m.trans.length)) {
+      const kfEase = a.kfs.find((k) => k.easing);
+      const timing = a.timing.easing === "linear" && kfEase ? Object.assign({}, a.timing, { easing: kfEase.easing }) : a.timing;
+      return { kind: "anim", label: a.type + ": " + a.name, kfs: a.kfs, timing, anim: a, trigger: a.idle ? "set on the element (runs when it renders)" : "running now" };
     }
+    if (m.hover.length && m.trans.length) return hoverEff();
     if (m.samples && m.samples.kfs.length > 1) return { kind: "sampled", label: "Sampled while you watched (approximate)", kfs: m.samples.kfs, timing: m.samples.timing, trigger: m.samples.trigger };
     const ge = gsapEffect(probe, el); if (ge) return ge;
     return null;
@@ -2568,7 +2573,7 @@
       const libs = (probe && probe.libs) || [];
       const chips = libs.length ? libs.map((l) => `<span class="mchip">${esc(l.name)}${l.version ? " <i>" + esc(l.version) + "</i>" : ""}</span>`).join("") : `<span class="mnone">No animation library detected on this page.</span>`;
       const lst = [];
-      m.anims.forEach((a) => lst.push(`<div class="mi"><b>${esc(a.type)}: ${esc(a.name)}</b><span>${a.timing.duration}ms \u00b7 ${esc(a.timing.easing)} \u00b7 delay ${a.timing.delay}ms \u00b7 ${esc(String(a.timing.iterations))}\u00d7</span></div>`));
+      m.anims.forEach((a) => { const ease = a.timing.easing === "linear" ? ((a.kfs.find((k) => k.easing) || {}).easing || "linear") : a.timing.easing; lst.push(`<div class="mi"><b>${esc(a.type)}: ${esc(a.name)}</b><span>${a.timing.duration}ms \u00b7 ${esc(ease)} \u00b7 delay ${a.timing.delay}ms \u00b7 ${esc(String(a.timing.iterations))}\u00d7</span></div>`); });
       m.trans.forEach((x) => lst.push(`<div class="mi"><b>Transition: ${esc(x.prop)}</b><span>${x.duration}ms \u00b7 ${esc(x.easing)}${x.delay ? " \u00b7 delay " + x.delay + "ms" : ""}</span></div>`));
       m.hover.forEach((h) => lst.push(`<div class="mi"><b>${esc(h.sel)}</b><span>${esc(Object.entries(h.decls).slice(0, 4).map(([a, b]) => a + ": " + b).join("; "))}</span></div>`));
       if (probe && probe.gsap) probe.gsap.forEach((g) => { const v = g.vars || {}, skip = /^(delay|duration|ease|overwrite|paused|stagger|scrollTrigger|onComplete|onStart|onUpdate|immediateRender|lazy|id|data|repeat|yoyo|repeatDelay|runBackwards|startAt|callbackScope)$/; const to = Object.entries(v).filter(([k, x]) => !skip.test(k) && (typeof x === "number" || typeof x === "string")).slice(0, 6).map(([k, x]) => k + " \u2192 " + x); lst.push(`<div class="mi"><b>GSAP tween (${esc(g.on)})</b><span>${to.length ? "Animates " + esc(to.join(", ")) + ". " : ""}${Math.round(g.duration * 1000)}ms${v.ease ? " \u00b7 ease " + esc(String(v.ease)) : ""}${v.delay ? " \u00b7 delay " + Math.round(v.delay * 1000) + "ms" : ""}${v.stagger ? " \u00b7 staggered across children" : ""}</span></div>`); });
@@ -2578,7 +2583,7 @@
       if (!tabs.some(([k]) => k === motionTab)) motionTab = "css";
       const txt = code[motionTab] || "";
       lp.innerHTML = `<div class="ph"><b>Motion</b><span class="mono">${esc(selectorOf(el))}</span></div>
-        ${sty ? `<div class="mstyle" style="padding:12px 16px 4px"><span class="mchip" style="background:#0d99ff;color:#fff;font-weight:600">${esc(sty.name)}</span><div class="sub" style="margin-top:6px;line-height:1.45;color:#d6d6d6;font-size:12.5px">${esc(sty.desc)}</div></div>` : ""}
+        ${sty ? `<div class="mstyle" style="padding:12px 16px 4px"><span class="mchip" style="background:#0d99ff;color:#fff;font-weight:600">${esc(sty.name)}</span><div class="sub" style="margin-top:6px;line-height:1.45;color:#d6d6d6;font-size:12.5px;white-space:normal;overflow:visible;text-overflow:clip;word-break:break-word">${esc(sty.desc)}</div></div>` : ""}
         <div class="mprev"><div class="mstage" id="mstage"></div><div class="mbar"><button class="mini" id="mplay" aria-label="Pause or play preview">Pause</button><button class="mini" id="mrst" aria-label="Restart preview">Restart</button><span class="mhint">${eff ? esc(eff.label) : "Nothing to preview yet"}</span></div>
         <div class="mnote">${eff ? (eff.kind === "sampled" ? "Preview replays sampled values, so timing and easing are approximate." : "Preview replays the exact keyframes on a styled copy of the element. Scripts, scroll links and page layout are not reproduced.") : (libs.length ? "No CSS animation to replay: this page animates with JavaScript (" + libs.map((l) => l.name).slice(0, 3).join(", ") + "), usually on scroll or hover. Press Watch for 8 s, then scroll or hover the element, and the real motion is captured into this preview." : "No CSS or Web Animation found right now. Press Watch, then scroll or hover the element.")}</div></div>
         <section class="esec"><div class="eh"><h4>Libraries on this page</h4></div>${libs.length ? libRows(libs) : chips}</section>
