@@ -2378,7 +2378,8 @@
         if (eff.gsap && eff.gsap.stagger) name = "Staggered " + name.charAt(0).toLowerCase() + name.slice(1);
         if (scrub && name !== "Parallax") name = "Scroll-scrubbed " + name.charAt(0).toLowerCase() + name.slice(1);
       }
-      const desc = (what.length ? what.join(" and ") : "changes") + ". " + dur(t) + (t.easing && t.easing !== "linear" ? ", " + (eff.gsap && eff.gsap.ease ? String(eff.gsap.ease) : t.easing) : ", linear") + (t.delay ? ", " + Math.round(t.delay) + "ms delay" : "") + (trig ? ". " + trig.charAt(0).toUpperCase() + trig.slice(1) + "." : eff.kind === "hover" ? "." : ". " + (eff.trigger ? eff.trigger.charAt(0).toUpperCase() + eff.trigger.slice(1) : "") + ".");
+      const easeTxt = eff.dispEase || t.easing;
+      const desc = (what.length ? what.join(" and ") : "changes") + ". " + dur(t) + (easeTxt && easeTxt !== "linear" ? ", " + (eff.gsap && eff.gsap.ease ? String(eff.gsap.ease) : easeTxt) : ", linear") + (t.delay ? ", " + Math.round(t.delay) + "ms delay" : "") + (trig ? ". " + trig.charAt(0).toUpperCase() + trig.slice(1) + "." : eff.kind === "hover" ? "." : ". " + (eff.trigger ? eff.trigger.charAt(0).toUpperCase() + eff.trigger.slice(1) : "") + ".");
       return { name, desc: desc.replace(/\.\./g, ".") };
     }
     if (m.trans.length) { const x = m.trans[0]; return { name: "CSS transition", desc: `Animates ${m.trans.map((q) => q.prop).slice(0, 3).join(", ")} over ${x.duration}ms (${x.easing}) when its state changes (hover, focus, class change). No from/to values found yet, so no preview.` }; }
@@ -2395,9 +2396,9 @@
       return { kind: "hover", label: "Hover transition", kfs: [{ offset: 0, props: base }, { offset: 1, props: decl }], timing: { duration: t.duration, delay: t.delay, easing: t.easing, iterations: "infinite", direction: "alternate", fill: "both" }, trigger: "hover" };
     };
     if (a && !(a.type === "CSS transition" && m.hover.length && m.trans.length)) {
-      const kfEase = a.kfs.find((k) => k.easing);
-      const timing = a.timing.easing === "linear" && kfEase ? Object.assign({}, a.timing, { easing: kfEase.easing }) : a.timing;
-      return { kind: "anim", label: a.type + ": " + a.name, kfs: a.kfs, timing, anim: a, trigger: a.idle ? "set on the element (runs when it renders)" : "running now" };
+      const kfEasings = [...new Set(a.kfs.map((k) => k.easing || "linear"))];
+      const dispEase = a.timing.easing !== "linear" ? a.timing.easing : (kfEasings.length === 1 ? kfEasings[0] : "mixed easing");
+      return { kind: "anim", label: a.type + ": " + a.name, kfs: a.kfs, timing: a.timing, dispEase, anim: a, trigger: a.idle ? "set on the element (runs when it renders)" : "running now" };
     }
     if (m.hover.length && m.trans.length) return hoverEff();
     if (m.samples && m.samples.kfs.length > 1) return { kind: "sampled", label: "Sampled while you watched (approximate)", kfs: m.samples.kfs, timing: m.samples.timing, trigger: m.samples.trigger };
@@ -2412,7 +2413,7 @@
     const sel = selName(el), out = { css: "", js: "", react: "", prompt: "" };
     if (eff) {
       const t = eff.timing, nm = eff.anim ? eff.anim.name : "dsx-effect";
-      const kfCss = eff.anim && eff.anim.ruleText ? eff.anim.ruleText : `@keyframes ${nm} {\n` + eff.kfs.map((k) => `  ${Math.round(k.offset * 1000) / 10}% { ${Object.entries(k.props).map(([pn, v]) => `${pn}: ${v};`).join(" ")} }`).join("\n") + "\n}";
+      const kfCss = eff.anim && eff.anim.ruleText ? eff.anim.ruleText : `@keyframes ${nm} {\n` + eff.kfs.map((k) => `  ${Math.round(k.offset * 1000) / 10}% { ${Object.entries(k.props).map(([pn, v]) => `${pn}: ${v};`).join(" ")}${k.easing ? " animation-timing-function: " + k.easing + ";" : ""} }`).join("\n") + "\n}";
       if (eff.kind === "hover") {
         out.css = `${sel} {\n  transition: ${m.trans.map((x) => `${x.prop} ${x.duration}ms ${x.easing}${x.delay ? " " + x.delay + "ms" : ""}`).join(", ")};\n}\n` + m.hover.map((h) => `${h.sel} {\n${Object.entries(h.decls).map(([pn, v]) => `  ${pn}: ${v};`).join("\n")}\n}`).join("\n");
       } else {
@@ -2573,7 +2574,7 @@
       const libs = (probe && probe.libs) || [];
       const chips = libs.length ? libs.map((l) => `<span class="mchip">${esc(l.name)}${l.version ? " <i>" + esc(l.version) + "</i>" : ""}</span>`).join("") : `<span class="mnone">No animation library detected on this page.</span>`;
       const lst = [];
-      m.anims.forEach((a) => { const ease = a.timing.easing === "linear" ? ((a.kfs.find((k) => k.easing) || {}).easing || "linear") : a.timing.easing; lst.push(`<div class="mi"><b>${esc(a.type)}: ${esc(a.name)}</b><span>${a.timing.duration}ms \u00b7 ${esc(ease)} \u00b7 delay ${a.timing.delay}ms \u00b7 ${esc(String(a.timing.iterations))}\u00d7</span></div>`); });
+      m.anims.forEach((a) => { const kfEasings = [...new Set(a.kfs.map((k) => k.easing || "linear"))]; const ease = a.timing.easing !== "linear" ? a.timing.easing : (kfEasings.length === 1 ? kfEasings[0] : "mixed easing"); lst.push(`<div class="mi"><b>${esc(a.type)}: ${esc(a.name)}</b><span>${a.timing.duration}ms \u00b7 ${esc(ease)} \u00b7 delay ${a.timing.delay}ms \u00b7 ${esc(String(a.timing.iterations))}\u00d7</span></div>`); });
       m.trans.forEach((x) => lst.push(`<div class="mi"><b>Transition: ${esc(x.prop)}</b><span>${x.duration}ms \u00b7 ${esc(x.easing)}${x.delay ? " \u00b7 delay " + x.delay + "ms" : ""}</span></div>`));
       m.hover.forEach((h) => lst.push(`<div class="mi"><b>${esc(h.sel)}</b><span>${esc(Object.entries(h.decls).slice(0, 4).map(([a, b]) => a + ": " + b).join("; "))}</span></div>`));
       if (probe && probe.gsap) probe.gsap.forEach((g) => { const v = g.vars || {}, skip = /^(delay|duration|ease|overwrite|paused|stagger|scrollTrigger|onComplete|onStart|onUpdate|immediateRender|lazy|id|data|repeat|yoyo|repeatDelay|runBackwards|startAt|callbackScope)$/; const to = Object.entries(v).filter(([k, x]) => !skip.test(k) && (typeof x === "number" || typeof x === "string")).slice(0, 6).map(([k, x]) => k + " \u2192 " + x); lst.push(`<div class="mi"><b>GSAP tween (${esc(g.on)})</b><span>${to.length ? "Animates " + esc(to.join(", ")) + ". " : ""}${Math.round(g.duration * 1000)}ms${v.ease ? " \u00b7 ease " + esc(String(v.ease)) : ""}${v.delay ? " \u00b7 delay " + Math.round(v.delay * 1000) + "ms" : ""}${v.stagger ? " \u00b7 staggered across children" : ""}</span></div>`); });
