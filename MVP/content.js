@@ -44,18 +44,20 @@
   const buildVarMap = () => {
     if (varMap) return varMap;
     varMap = new Map();
-    const names = new Set();
+    const names = new Map();
     const walk = (rules) => {
       for (const r of rules) {
-        if (r.style) for (const n of r.style) if (n.startsWith("--")) names.add(n);
+        if (r.style) for (const n of r.style) if (n.startsWith("--") && !names.has(n)) names.set(n, r.style.getPropertyValue(n));
         if (r.cssRules) try { walk(r.cssRules); } catch (e) {}
       }
     };
     for (const sh of document.styleSheets) { try { walk(sh.cssRules); } catch (e) {} }
+    const colorish = (v) => { v = String(v || "").trim(); if (!v) return false; if (/^-?[\d.]+(px|rem|em|ch|ex|%|vh|vw|vmin|vmax|s|ms|deg|rad|turn|fr|dppx|x)?$/i.test(v)) return false; if (/^\d/.test(v)) return false; return /^(#|rgb|hsl|hwb|okl|oklab|lab|lch|color\(|light-dark\(|var\(--|[a-zA-Z]+$)/i.test(v); };
+    for (const [n, v] of names) { if (!colorish(v)) names.delete(n); }
     const probe = document.createElement("span");
     probe.style.display = "none";
     document.body.appendChild(probe);
-    for (const n of names) {
+    for (const n of names.keys()) {
       probe.style.color = "";
       probe.style.color = `var(${n})`;
       const hex = toHex(getComputedStyle(probe).color);
@@ -1181,7 +1183,7 @@
     const fam = (f) => f.split(",")[0].replace(/["']/g, "").trim();
     lp.innerHTML = `<div class="ph"><b>Type scale</b><span>${list.length} styles</span></div>` + list.map((s, i) => `
       <div class="tcard" data-i="${i}">
-        <div style="display:flex;justify-content:space-between"><span class="nm">${esc(s.name)}</span><span class="sub">${s.els.length} elements</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="nm">${esc(s.name)}</span><span class="sub">${s.els.length} element${s.els.length === 1 ? "" : "s"}</span></div>
         <div class="tprev" style="font-family:${esc(s.family)};font-size:${Math.min(parseFloat(s.size), 30)}px;font-weight:${s.weight};letter-spacing:${s.ls}">${esc(fam(s.family))} Aa</div>
         <div class="grid">
           <div><div class="lbl">Family</div><input class="inp" data-p="font-family" value="${esc(fam(s.family))}"></div>
@@ -1209,7 +1211,15 @@
           record(`g:t:${s.key}:${p}`, `${s.name} ${p.replace("font-", "").replace("-", " ")}`, orig.split(",")[0].replace(/["']/g, ""), v.split(",")[0].replace(/["']/g, ""), "text");
         };
         inp.addEventListener(inp.tagName === "SELECT" ? "change" : "change", apply);
-        inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); });
+        inp.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { inp.blur(); return; }
+          if (inp.tagName === "SELECT" || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+          const m = inp.value.match(/^(-?[\d.]+)(.*)$/); if (!m) return;
+          e.preventDefault();
+          const d = (e.shiftKey ? 10 : 1) * (e.key === "ArrowUp" ? 1 : -1);
+          inp.value = Math.round((parseFloat(m[1]) + d) * 100) / 100 + m[2];
+          apply();
+        });
       });
     });
   };
@@ -1234,7 +1244,14 @@
         render();
         record("g:s:" + s.value, `Spacing ${s.value}px (all uses)`, s.value + "px", v + "px", "space");
       });
-      inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); });
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { inp.blur(); return; }
+        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+        const cur = parseFloat(inp.value); if (isNaN(cur)) return;
+        e.preventDefault();
+        inp.value = String(Math.max(0, cur + (e.shiftKey ? 10 : 1) * (e.key === "ArrowUp" ? 1 : -1)));
+        inp.dispatchEvent(new Event("change", { bubbles: true }));
+      });
     });
   };
 
@@ -1886,7 +1903,7 @@
     const cs = getComputedStyle(el), vm = buildVarMap(), sel = selectorOf(el), id = elId(el);
     const FICONS = { "font-size": "M4 7V4h16v3M12 4v16m-4 0h8", "line-height": "M3 6h18M3 12h18M3 18h18", "letter-spacing": "M4 5v14M20 5v14M8.5 15l3.5-7 3.5 7m-5.7-2.5h4.4", "font-family": "M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5", "W": "M8 5h8M5 5v14m14-14v14M8 19h8", "H": "M5 8v8M5 5h14M5 19h14M19 8v8" };
     const FLABELS = { "font-size": "Font size", "line-height": "Line height", "letter-spacing": "Letter spacing", "font-family": "Font", "width": "Width", "height": "Height", "padding-top": "Padding top", "padding-right": "Padding right", "padding-bottom": "Padding bottom", "padding-left": "Padding left", "margin-top": "Margin top", "margin-right": "Margin right", "margin-bottom": "Margin bottom", "margin-left": "Margin left", "border-radius": "Corner radius", "opacity": "Opacity" };
-    const fld = (label, prop, wide) => { const oval = cssShort(cs, prop).split(",")[0].replace(/["']/g, ""); let val = oval; if (/^-?[\d.]+px$/.test(val)) val = val.slice(0, -2); const ic2 = FICONS[prop] ? `<span class="fk ico" title="${FLABELS[prop] || label}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${FICONS[prop]}"/></svg></span>` : `<span class="fk">${label}</span>`; return `<label class="fld${wide ? " wide" : ""}" title="${FLABELS[prop] || label}">${ic2}<input class="inp" data-p="${prop}" data-o="${esc(oval)}" value="${esc(val)}" spellcheck="false" aria-label="${FLABELS[prop] || label}"></label>`; };
+    const fld = (label, prop, wide) => { const oval = cssShort(cs, prop).split(",")[0].replace(/["']/g, ""); let val = oval; if (/^-?[\d.]+px$/.test(val)) val = val.slice(0, -2); if (/^-?\d+\.\d{2,}$/.test(val)) val = String(Math.round(parseFloat(val) * 10) / 10); const ic2 = FICONS[prop] ? `<span class="fk ico" title="${FLABELS[prop] || label}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${FICONS[prop]}"/></svg></span>` : `<span class="fk">${label}</span>`; return `<label class="fld${wide ? " wide" : ""}" title="${FLABELS[prop] || label}">${ic2}<input class="inp" data-p="${prop}" data-o="${esc(oval)}" value="${esc(val)}" spellcheck="false" aria-label="${FLABELS[prop] || label}"></label>`; };
     const wsel = () => { const cur = String(parseInt(cs.fontWeight) || 400); const known = WEIGHTS.some(([v]) => v === cur); return `<label class="fld" title="Weight"><span class="fk ico" title="Font weight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h5a4 4 0 010 8H7zM7 12h6.5a4 4 0 010 8H7z"/></svg></span><select class="fselect" data-p="font-weight" data-o="${cur}" aria-label="Weight">${WEIGHTS.map(([v, n]) => `<option value="${v}"${v === cur ? " selected" : ""}>${n}</option>`).join("")}${known ? "" : `<option value="${cur}" selected>${cur}</option>`}</select></label>`; };
     const col = (label, prop) => {
       const v0 = cssShort(cs, prop), rgb = rgbaOf(v0), hex = toHex(v0), a = rgb ? rgb.a : 1, vars = hex ? vm.get(hex) || [] : [];
