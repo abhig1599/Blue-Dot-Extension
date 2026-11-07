@@ -868,6 +868,13 @@
     .ph .pcx svg{width:12px;height:12px}
     :host(.lpopen) .bar:not(.moved){left:50%}
     :host(.lpopen) .bar{max-width:min(1240px,calc(100vw - 16px))}
+    /* narrow viewports: panels overlay full width, bar keeps the whole row */
+    :host(.narrow) #lp,:host(.narrow) #rp{left:8px;right:8px;width:auto;max-width:none}
+    :host(.narrow.lpopen) #rp{right:8px}
+    :host(.narrow.lpopen) .bar:not(.moved){left:50%}
+    :host(.narrow.lpopen) .bar{max-width:calc(100vw - 16px)}
+    :host(.narrow) .bar{flex-wrap:wrap;justify-content:center;border-radius:18px;row-gap:4px}
+    :host(.narrow) .tools{flex-wrap:wrap;justify-content:center;max-width:100%;row-gap:4px}
     .panel{bottom:78px}
     #rp{max-height:calc(100vh - 92px)}
     .savebox .pbtn{flex:1;width:auto;padding:0 8px;white-space:nowrap}
@@ -1841,9 +1848,11 @@
     lp.querySelectorAll(".inp[data-i]").forEach((inp) => {
       const x = list[inp.dataset.i];
       inp.addEventListener("change", () => {
-        let v = inp.value.trim(); if (!v) return;
+        let v = inp.value.trim(); if (!v) { inp.value = x.key; return; }
         if (fxTab === "radius" && /^[\d.]+$/.test(v)) v += "px";
-        if (fxTab === "z" && !/^-?\d+$/.test(v)) return;
+        if (fxTab === "z" && !/^-?\d+$/.test(v)) { inp.value = x.key; return; }
+        const prop = x.els[0] ? x.els[0].prop : "z-index";
+        if (!CSS.supports(prop, v)) { inp.value = x.key; return; }
         for (const { el, prop } of x.els) setProp(el, prop, v);
         render(); record("g:fx:" + fxTab + ":" + x.key, `${F.name} ${x.key.length > 24 ? x.key.slice(0, 22) + "\u2026" : x.key} (all uses)`, x.key, v, F.rec);
       });
@@ -2904,8 +2913,9 @@
   const fitBar = () => {
     fitting = true; queueMicrotask(() => { fitting = false; });
     const b = $("#bar");
+    const narrow = innerWidth < 640; host.classList.toggle("narrow", narrow);
     if (b.classList.contains("collapsed")) { b.classList.remove("compact", "tight"); return; }
-    const avail = innerWidth - (host.classList.contains("lpopen") ? parseInt(host.style.getPropertyValue("--lpw") || "300", 10) + 44 : 16);
+    const avail = innerWidth - (!narrow && host.classList.contains("lpopen") ? parseInt(host.style.getPropertyValue("--lpw") || "300", 10) + 44 : 16);
     /* measure on a hidden copy so the real bar's transitions are never interrupted */
     const c = b.cloneNode(true);
     c.classList.add("nofx"); c.classList.remove("compact", "tight", "on");
