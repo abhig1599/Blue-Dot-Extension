@@ -868,13 +868,16 @@
     .ph .pcx svg{width:12px;height:12px}
     :host(.lpopen) .bar:not(.moved){left:50%}
     :host(.lpopen) .bar{max-width:min(1240px,calc(100vw - 16px))}
-    /* narrow viewports: panels overlay full width, bar keeps the whole row */
-    :host(.narrow) #lp,:host(.narrow) #rp{left:8px;right:8px;width:auto;max-width:none}
-    :host(.narrow.lpopen) #rp{right:8px}
+    /* narrow viewports: compact icon-only bar wraps in place; panels dock below it via --barh */
+    :host(.narrow) .bar{flex-wrap:wrap;justify-content:center;border-radius:16px;row-gap:2px;padding:4px 6px;width:calc(100vw - 16px)}
+    :host(.narrow) .bar .btn>span:not(.badge){display:none!important}
+    :host(.narrow) .bar .btn{padding:0 7px;height:30px;min-width:30px}
+    :host(.narrow) .tools{flex-wrap:wrap;justify-content:center;max-width:100%;row-gap:2px;gap:2px;padding:2px;background:transparent}
+    :host(.narrow) .grp{gap:2px}
+    :host(.narrow) #lp,:host(.narrow) #rp{left:8px!important;right:8px!important;width:auto!important;max-width:none;top:12px;bottom:calc(var(--barh,60px) + 30px);height:auto;max-height:none}
+    :host(.narrow.lpopen) #rp{right:8px!important}
     :host(.narrow.lpopen) .bar:not(.moved){left:50%}
     :host(.narrow.lpopen) .bar{max-width:calc(100vw - 16px)}
-    :host(.narrow) .bar{flex-wrap:wrap;justify-content:center;border-radius:18px;row-gap:4px}
-    :host(.narrow) .tools{flex-wrap:wrap;justify-content:center;max-width:100%;row-gap:4px}
     .panel{bottom:78px}
     #rp{max-height:calc(100vh - 92px)}
     .savebox .pbtn{flex:1;width:auto;padding:0 8px;white-space:nowrap}
@@ -2925,6 +2928,7 @@
     if (c.scrollWidth > avail) { want = 1; c.classList.add("compact"); if (c.scrollWidth > avail) { want = 2; c.classList.add("tight"); } }
     c.remove();
     b.classList.toggle("compact", want >= 1); b.classList.toggle("tight", want >= 2);
+    if (narrow) requestAnimationFrame(() => { host.style.setProperty("--barh", Math.round(b.getBoundingClientRect().height) + "px"); });
   };
   new MutationObserver(() => { if (!fitting) setTimeout(fitBar, 0); }).observe(host, { attributes: true, attributeFilter: ["class", "style"] });
   /* only re-measure when something that changes the bar's natural width changed (a button shown/hidden, collapse state).
