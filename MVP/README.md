@@ -62,3 +62,29 @@ Sessions are gone. The Gallery button (stack icon) captures the whole page as an
 The Figma icon (Alt+G) now converts the picked element to native Figma layers (auto layout, real text, fills, radius) using the MIT-licensed @figit/dom-to-figma and @figit/fig-kiwi (see THIRD_PARTY_LICENSES.txt). Click it, then press Ctrl+V on a Figma canvas. It relies on Figma's undocumented clipboard format and can break after a Figma update. If conversion fails it falls back to the old SVG copy.
 
 Motion export: when the page uses GSAP (with or without ScrollTrigger), the Figma icon also samples those animations on the picked element and pastes them as Figma Motion keyframes (move, scale, rotate, opacity) on the layers inside. Scroll-scrubbed animations map to a 0-2s timeline. Text shadow, colour, filter and CSS-only animations are not exported. The top frame itself cannot be animated in Figma.
+
+## v3.0.0 - redesign, exact motion export, gallery
+- **One design system.** The stacked styles from earlier versions are replaced by one set of colours, type and spacing. Text contrast passes WCAG AA. Toolbar icons no longer shift when a tool opens, and Close stays visible on narrow windows.
+- **Safer actions.** Revert shows an Undo button. Closing with unsaved changes asks first. Finish keeps Revert all as a quiet secondary action.
+- **Motion export reproduces the original.** GSAP tweens become exact CSS, JavaScript and React (GSAP easing written as CSS `linear()` curves, repeat, yoyo, repeatDelay, existing transforms kept). Timelines, stagger and parent animations are sampled frame by frame from the page. The GSAP tab rebuilds `gsap.timeline()` with positions, the right group selectors and a valid `scrollTrigger`. Scrubbed animations use CSS scroll-driven animations.
+- **How to apply it** steps under the motion code, per tab.
+- **Motion gallery** (`gallery.html`): saved animations play as live preview cards with their code.
+- **Figma copy** starts inside the click, so slow conversions are no longer blocked; the menu explains each option; ↑/↓ in the picker select the parent/child.
+- **Code export** keeps line-height ratios and spaces between words, drops frozen GSAP inline styles.
+- **Fixes:** near-duplicate merge no longer chains distant values, findings behind the panel slide it aside, variable labels update after edits, "No border" instead of a fake stroke colour, rounded values, selected element keeps an outline, restyled find bar and fix card.
+
+## v3.1.0 - Motion Pro
+- **Motion Recorder** (Motion > Record the page): keeps every GSAP and CSS animation that plays while you hover, click and scroll, including ones GSAP deletes after playing; rows fold letters and items into groups; inspect or copy to Figma afterwards.
+- **Component motion:** picking a container exports every animated element inside it with exact keyframes (CSS, JS, React, preview, gallery). Typewriter (`display` steps) supported.
+- **Motion to Figma rebuilt:** GSAP + CSS + recorded animations; layers captured on the most visible frame; dense keyframes relative to it; wrapper frame for animated roots; unique keyframe keys (no more scrambling after 90 keyframes); animated layers named after their element; parent motion applied to children (marquee halves).
+- **Images in Figma copies:** custom image loader (download, then screenshot crop, then placeholder); optional "images from other sites" permission (`permission.html`).
+- **Fixes:** copies no longer hang in background tabs; hidden elements no longer chosen as the capture frame.
+- Verified on madewithgsap.com: every homepage animation exports to code (0 to 0.44 px from the original) and pastes into Figma with playable Motion keyframes.
+
+## v3.2.0 - Copy a section with its motion
+- Figma menu › **A section with its motion**: the picker selects the whole section; the copy becomes a scroll story in Figma (viewport frame, section slides up as scrolling, scroll animations placed at their scroll position, scrubbed ones stretched to their scroll distance, pins held in place, loops repeated).
+- Every ScrollTrigger is paused (pins kept) while the layers are captured, and the page is scrolled to the position that matches the capture frame, so nothing moves during conversion. Scroll position and triggers are restored afterwards.
+- Absolute layout for section copies (no auto layout) so layers line up with their keyframes; transparent sections get the background visible behind them.
+- Blue Dot remembers every animation that plays while it is open (the Recorder runs quietly in the background).
+- Clipboard writes that stall after long conversions fall back to a "Copy now" button; PRO badge layout fixed.
+- Verified on madewithgsap.com's pinned scroll gallery: predicted on-screen positions match the live page within 0.3 px along the scrubbed timeline. Effects that react to scroll speed (created by scripts on the fly) are not part of a fixed timeline and are not exported.

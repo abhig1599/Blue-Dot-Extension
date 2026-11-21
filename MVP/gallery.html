@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Motion gallery · Blue Dot</title>
+<link rel="icon" href="icons/32.png">
+<link rel="stylesheet" href="gallery.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><img src="icons/32.png" alt="" width="22" height="22"><span>Blue Dot</span><b>Motion gallery</b></div>
+    <div class="tools">
+      <label class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Search name, site or tag" aria-label="Search the gallery"></label>
+      <button class="ghost" id="speed" aria-pressed="false" title="Play every preview at quarter speed">0.25×</button>
+    </div>
+  </header>
+  <nav class="filters" id="filters" aria-label="Filter by tag"></nav>
+  <main id="grid" class="grid" aria-live="polite"></main>
+  <div class="empty" id="empty" hidden>
+    <div class="ring"></div>
+    <h2>No animations saved yet</h2>
+    <p>Open Blue Dot on any site, pick <b>Motion</b>, click an animated element, then press <b>Add to gallery</b>.</p>
+  </div>
+
+  <dialog id="drawer" aria-labelledby="dTitle">
+    <div class="dhead">
+      <div><h2 id="dTitle"></h2><p id="dDesc"></p><div class="tags" id="dTags"></div></div>
+      <button class="x" id="dClose" aria-label="Close">✕</button>
+    </div>
+    <div class="dstage" id="dStage"></div>
+    <div class="dbar"><button class="ghost" id="dReplay">Replay</button><a id="dSrc" target="_blank" rel="noopener noreferrer"></a></div>
+    <div class="tabs" id="dTabs" role="tablist"></div>
+    <pre class="code" id="dCode"></pre>
+    <div class="dfoot"><button class="danger" id="dDel">Delete</button><button class="pri" id="dCopy">Copy code</button></div>
+  </dialog>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="gallery.js"></script>
+</body>
+</html>
