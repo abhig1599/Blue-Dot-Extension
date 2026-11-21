@@ -56,11 +56,41 @@ function dsxProbe() {
     const el = document.querySelector("[data-dsx-probe]");
     if (el) {
       if (w.gsap && w.gsap.getTweensOf) {
+        const G = w.gsap, root = G.globalTimeline;
+        const topOf = (a) => { let x = a; while (x.parent && x.parent !== root) x = x.parent; return x; };
+        const tls = new Map(); let ti = 0;
+        /* describe a ScrollTrigger and mark its trigger element so the page script can name it */
+        const stInfo = (s) => { if (!s) return null; const v = s.vars || {}; let trig = null; try { const te = s.trigger || (typeof v.trigger === "string" ? document.querySelector(v.trigger) : v.trigger); if (te && te.nodeType === 1) { te.setAttribute("data-dsx-trig", ""); trig = true; } } catch (e) {} return safe({ start: typeof v.start === "string" ? v.start : undefined, end: typeof v.end === "string" ? v.end : undefined, scrub: v.scrub, pin: !!v.pin, toggleActions: v.toggleActions, once: v.once, markers: false, hasTrigger: !!trig }, 0); };
         let node = el, depth = 0;
         while (node && depth < 4) {
-          const ts = w.gsap.getTweensOf(node);
-          for (const t of ts.slice(0, 6)) out.gsap.push({ on: depth === 0 ? "this element" : "ancestor " + depth, duration: t.duration(), delay: t.delay(), vars: safe(t.vars, 0) });
+          for (const t of G.getTweensOf(node).slice(0, 8)) {
+            let targets = []; try { targets = t.targets().filter((n) => n && n.nodeType === 1); } catch (e) {}
+            const tag = "data-dsx-t" + ti; targets.forEach((n) => n.setAttribute(tag, ""));
+            const par = t.parent && t.parent !== root ? t.parent : null, top = topOf(t);
+            let tlId = null;
+            if (par) { if (!tls.has(top)) tls.set(top, { id: tls.size, duration: top.duration(), repeat: top.repeat(), yoyo: top.yoyo(), repeatDelay: top.repeatDelay(), delay: top.delay(), st: stInfo(top.scrollTrigger), children: (top.getChildren ? top.getChildren(true, true, false).length : 0) }); tlId = tls.get(top).id; }
+            const v = safe(t.vars, 0) || {}; delete v.parent; delete v.scrollTrigger;
+            out.gsap.push({ on: depth === 0 ? "this element" : "ancestor " + depth, depth, duration: t.duration(), delay: t.delay(), vars: v, tag, count: targets.length, pos: par ? +t.startTime().toFixed(4) : 0, tl: tlId, st: par ? null : stInfo(t.scrollTrigger) });
+            ti++;
+          }
           node = node.parentElement; depth++;
+        }
+        out.timelines = [...tls.values()];
+        /* sample the element frame by frame by driving its own GSAP animation: exact, however the site built it */
+        const own = G.getTweensOf(el);
+        if (own.length) {
+          const A = topOf(own[0]), d = A.duration(), rd = A.repeatDelay ? A.repeatDelay() || 0 : 0, yo = A.yoyo ? A.yoyo() : false, rep = A.repeat ? A.repeat() : 0;
+          const cyc = rep !== 0 ? (yo ? 2 * (d + rd) : d + rd) : d;
+          if (d > 0 && cyc < 120) {
+            const PROPS = ["transform", "opacity", "background-color", "color", "clip-path", "filter", "border-top-left-radius", "visibility", "width", "height", "letter-spacing"];
+            const saved = A.totalTime(), wasPaused = A.paused(), N = Math.min(240, Math.max(60, Math.round(cyc * 40)));
+            const frames = [];
+            try {
+              A.pause();
+              for (let i = 0; i <= N; i++) { A.totalTime(cyc * i / N, true); const cs = getComputedStyle(el), v = {}; PROPS.forEach((p) => { v[p] = cs.getPropertyValue(p); }); frames.push({ t: cyc * 1000 * i / N, v }); }
+            } finally { try { A.totalTime(saved, true); if (!wasPaused) A.resume(); } catch (e) {} }
+            out.sample = { dur: cyc * 1000, delay: (A.delay ? A.delay() : 0) * 1000, repeat: rep, yoyo: yo, frames, st: stInfo(A.scrollTrigger), tweens: own.length, siblings: A.getChildren ? A.getChildren(true, true, false).length : 1 };
+          }
         }
       }
       if (STc && STc.getAll) for (const s of STc.getAll()) { try { if (s.trigger === el || (s.trigger && (s.trigger.contains(el) || el.contains(s.trigger)))) out.st.push(safe({ start: s.vars.start, end: s.vars.end, scrub: s.vars.scrub, pin: !!s.vars.pin, toggleActions: s.vars.toggleActions, markers: !!s.vars.markers }, 0)); } catch (e) {} }
@@ -199,4 +229,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (!p || !tab.url || tab.url.split("#")[0] !== p.url.split("#")[0]) return;
   try { await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] }); }
   catch (e) { chrome.action.setBadgeText({ tabId, text: "!" }); chrome.action.setBadgeBackgroundColor({ tabId, color: "#f24822" }); }
+});
+
+// Motion gallery: an extension page that plays every saved animation as a preview card.
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || msg.type !== "dsx-open-gallery") return;
+  chrome.tabs.create({ url: chrome.runtime.getURL("gallery.html") }).then(() => sendResponse({ ok: true })).catch((e) => sendResponse({ ok: false, error: String(e && e.message || e) }));
+  return true;
 });

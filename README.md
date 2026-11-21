@@ -11,7 +11,9 @@ Built for client sessions: edits are temporary, nothing is saved unless you save
 ## Features
 
 ### The bar
-A dark, minimal bar sits at the bottom centre of the page. Icons only when idle. The tool you pick expands with a blue label, Figma style. One tool is open at a time. Drag the logo to move the bar, click it to collapse it.
+A dark, minimal bar sits at the bottom centre of the page, with tools grouped as Inspect, Check, Capture and Finish. Icons stay in fixed places, so nothing moves under your cursor; hover any icon for its name and shortcut. One tool is open at a time. Drag the logo to move the bar, click it to collapse it. On narrow windows the bar tightens and the Close button always stays visible.
+
+**Safe by default:** Revert can be undone from the toast, and closing Blue Dot with unsaved changes asks first.
 
 ### Colours
 Lists every colour on the page with its name (taken from the site's CSS variables when they exist), hex value and where it is used. Change one swatch and every use on the page updates. Near-duplicate colours show a Merge button.
@@ -69,17 +71,29 @@ Crawls the site for broken flows: dead links, missing anchors, buttons that do n
 
 
 ### Motion
-Pick an element and Blue Dot detects its animation style (fade, slide, hover lift and more), plays a looping preview, lists the animation libraries on the page (GSAP, AOS, Framer Motion, Lenis and others), and shows the code. Copy it as CSS, JavaScript, React or an AI prompt. CSS animations are read exactly. GSAP is sampled with "Watch 8s".
+Pick an element and Blue Dot names its animation (fade up, slide + spin, marquee, colour morph and more), plays a looping preview, lists the animation libraries on the page (GSAP, ScrollTrigger, AOS, Framer Motion, Lenis and others), and gives you code that reproduces it: CSS, JavaScript, React, GSAP or an AI prompt.
+
+- **GSAP is converted exactly:** values, GSAP's own easing curves (back, elastic, bounce, expo… written as CSS `linear()` curves), repeat, yoyo and the pause between loops. Timelines, stagger and several tweens on one element are read frame by frame from the live page.
+- **The GSAP tab rebuilds the original code:** `gsap.from / to / fromTo`, the timeline with each tween's position, the whole staggered group, and a valid `scrollTrigger`.
+- **Scroll is kept:** scrubbed animations become native CSS scroll-driven animations (`animation-timeline`), and play-on-scroll animations start when the element enters the viewport.
+- **How to apply it:** step-by-step instructions under the code for the tab you picked, with install commands and a React / Next.js (`useGSAP`) example.
+- **Watch 8s** catches hover and scroll effects that are not running when you click.
+- **Add to gallery** keeps the animation (see Motion gallery below).
 
 <img width="600" height="auto" alt="image" src="https://github.com/user-attachments/assets/e16dbd90-ea84-4f0e-a553-f45ebecb1036" />
 
 
+### Motion gallery
+Every animation you add from the Motion panel is kept as a live preview card in a gallery page inside the extension: the real element, animating on a dark stage. Filter by library or ease, search, slow everything to 0.25×, and open a card for a big preview with its CSS, JavaScript, React, GSAP and AI-prompt code.
+
 ### Figma
 Copy designs out of the browser and paste them into Figma with a plain Ctrl+V or Cmd+V. No plugin.
 
-- **Capture design**: the whole page as editable Figma layers
-- **Select element**: one element
-- **Capture code**: React (JSX plus CSS) or HTML plus CSS, including responsive rules
+- **An element**: click any part of the page (press ↑ to pick the parent, ↓ to go back)
+- **Whole page**: every section as editable Figma layers
+- **An element as code**: React (JSX plus CSS) or HTML plus CSS, including responsive rules. Line height, spacing between words and the element's resting state (not a frozen animation frame) are kept.
+
+The copy starts the moment you click, so large elements and whole pages are not blocked by the browser's clipboard time limit. If the browser still blocks it, a **Copy now** button appears.
 
 Motion is copied too, as Figma Motion keyframes (position, scale, rotation, opacity).
 
@@ -151,7 +165,7 @@ On Mac use Option instead of Alt.
 - Review is an automated subset of WCAG 2.2 AA and common heuristics. It is not a full compliance audit.
 - Flow check reads pages with GET requests only and never clicks or submits. Flows built in JavaScript may be missed.
 - Figma paste uses Figma's undocumented clipboard format and can break after a Figma update. Text keeps the page's fonts, so install them in Figma for a match.
-- Motion: CSS is read exactly, GSAP is sampled and approximate, and minified JavaScript logic cannot be recovered.
+- Motion: CSS and GSAP are reproduced exactly, but an entrance animation that has already finished (for example on page load) cannot be read. GSAP must be reachable on the page (`window.gsap`). For a staggered group, the CSS, JavaScript and React tabs cover the element you picked; the GSAP tab covers the whole group. Scroll-driven CSS needs Chrome or Edge 115+. Minified JavaScript logic cannot be recovered.
 - Merging z-index values can change stacking. Check the page afterwards.
 
 ## Credits
