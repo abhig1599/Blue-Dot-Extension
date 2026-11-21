@@ -375,21 +375,29 @@ function dsxRecStart() {
   R.mark = mark;
   const trig = () => { const age = performance.now() - R.lastAt; return age < 400 ? ({ over: "hover", down: "click", click: "click", scroll: "scroll", wheel: "scroll", keydown: "key", focusin: "focus" }[R.last] || R.last) : "on its own"; };
   const keep = (a) => { try { if (!a || R.tweens.includes(a)) return; a.__dsxTrig = trig(); a.__dsxAt = Math.round(performance.now() - R.t0); R.tweens.push(a); if (R.tweens.length > 600) R.tweens.shift(); } catch (e) {} };
-  if (g && !g.__dsxHooked) {
-    g.__dsxHooked = true;
-    ["to", "from", "fromTo"].forEach((k) => { const o = g[k]; g[k] = function () { const r = o.apply(this, arguments); if (w.__dsxRec && w.__dsxRec.on) keep(r); return r; }; });
-    const otl = g.timeline; g.timeline = function () { const tl = otl.apply(this, arguments); if (w.__dsxRec && w.__dsxRec.on) keep(tl); return tl; };
-  }
+  const hookGsap = () => {
+    const gg = w.gsap;
+    if (!gg || gg.__dsxHooked) return;
+    gg.__dsxHooked = true;
+    ["to", "from", "fromTo"].forEach((k) => { const o = gg[k]; gg[k] = function () { const r = o.apply(this, arguments); if (w.__dsxRec && w.__dsxRec.on) keep(r); return r; }; });
+    const otl = gg.timeline; gg.timeline = function () { const tl = otl.apply(this, arguments); if (w.__dsxRec && w.__dsxRec.on) keep(tl); return tl; };
+  };
+  hookGsap();
+  /* GSAP can load after recording starts: keep checking and hook it when it appears */
+  if (!w.gsap) { clearInterval(R.gsapPoll); R.gsapPoll = w.setInterval(() => { if (!w.__dsxRec || !w.__dsxRec.on || w.gsap) { clearInterval(R.gsapPoll); R.gsapPoll = 0; } hookGsap(); }, 1000); }
   /* animations that already exist (waiting for a scroll, paused, running) are kept too, and listed once they play */
   try { if (g) g.globalTimeline.getChildren(false, true, true).forEach((t) => { if (R.tweens.includes(t)) return; const d = t.duration ? t.duration() : 0; if (!(d > 0) || d > 600) return; t.__dsxT0 = t.totalTime(); t.__dsxPre = true; keep(t); t.__dsxTrig = null; }); } catch (e) {}
   R.onAnim = (e) => { try { const el = e.target; const an = el.getAnimations().find((x) => (x.animationName || x.transitionProperty) === (e.animationName || e.propertyName)); if (an && !R.css.includes(an)) { an.__dsxTrig = trig(); an.__dsxAt = Math.round(performance.now() - R.t0); R.css.push(an); } } catch (err) {} };
   document.addEventListener("animationstart", R.onAnim, true);
+  document.addEventListener("transitionstart", R.onAnim, true);
   return { ok: true, gsap: !!g };
 }
 function dsxRecStop() {
   const R = window.__dsxRec; if (!R) return { ok: true };
   R.on = false; (R.evs || []).forEach((t) => window.removeEventListener(t, R.mark, { capture: true }));
+  clearInterval(R.gsapPoll); R.gsapPoll = 0;
   document.removeEventListener("animationstart", R.onAnim, true);
+  document.removeEventListener("transitionstart", R.onAnim, true);
   return { ok: true };
 }
 /* one row per animated element: what moved, how long, what triggered it. Elements are marked data-dsx-rec. */
@@ -417,7 +425,7 @@ function dsxRecList() {
       add(tg[0], props, a.duration ? a.duration() : 0, a.__dsxTrig || "on its own", a.__dsxAt || 0, "GSAP", tg.length);
     }
   }
-  for (const an of R.css) { const el = an.effect && an.effect.target; add(el, [an.animationName || "css"], (an.effect.getTiming().duration || 0) / 1000, an.__dsxTrig || "on its own", an.__dsxAt || 0, "CSS", 1); }
+  for (const an of R.css) { const el = an.effect && an.effect.target; add(el, [an.animationName || an.transitionProperty || "css"], (an.effect.getTiming().duration || 0) / 1000, an.__dsxTrig || "on its own", an.__dsxAt || 0, "CSS", 1); }
   /* letters and list items animated one by one: fold siblings with the same animation into one row on their parent
      (repeat up the tree, so letters inside words inside a link become one row on the link) */
   for (let pass = 0; pass < 5; pass++) {

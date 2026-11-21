@@ -29,7 +29,7 @@ When an edit creates a problem (low contrast, tiny text, tight line height, a he
 
 - **Compare (eye icon, Alt+B)**: flips the page to the original and back. A blue banner shows while you view the original.
 - **Edit text on page**: in Select element, press "Edit text on page", type, Enter to commit, Esc to cancel. Logged as a "Copy" change. Works on elements with no child elements only.
-- **Sessions were removed in 2.4.0.** See Gallery below.
+- **Sessions were removed in 2.4.0** (and brought back in 3.x: the bookmark icon saves named edits and reopens them). See Gallery below.
 - **Near-duplicates**: Colours, Text and Spacing list values that are almost the same, with a Merge button.
 - **Effects (Alt+7)**: Radius, Shadow and Z-index tabs with editable values and near-duplicate merge. Merging z-index values can change stacking, so check the page after.
 - Limits: sessions find elements by DOM path, so dynamic pages may not restore every edit.
@@ -56,7 +56,7 @@ Click the Motion button, then an element. The panel shows a looping preview card
 Limits: preview is a styled copy, not the page scripts or scroll links. Minified JS logic cannot be recovered. :hover cannot be forced, so hover during Watch. Library data is read only if the library exposes it.
 
 ## v2.4.0 - Before and after gallery
-Sessions are gone. The Gallery button (stack icon) captures the whole page as an image, "before" and "after", and keeps them inside the extension until you delete them (Delete all, or per image). Nothing is uploaded. Compare this page with a slider, or download any image as PNG. Uses the unlimitedStorage permission because full-page PNGs are large; at most 30 images are kept.
+Sessions were gone in this version. The Gallery button (stack icon) captures the whole page as an image, "before" and "after", and keeps them inside the extension until you delete them (Delete all, or per image). Nothing is uploaded. Compare this page with a slider, or download any image as PNG. Uses the unlimitedStorage permission because full-page PNGs are large; at most 30 images are kept.
 
 ## v2.5 - Figma icon pastes real layers
 The Figma icon (Alt+G) now converts the picked element to native Figma layers (auto layout, real text, fills, radius) using the MIT-licensed @figit/dom-to-figma and @figit/fig-kiwi (see THIRD_PARTY_LICENSES.txt). Click it, then press Ctrl+V on a Figma canvas. It relies on Figma's undocumented clipboard format and can break after a Figma update. If conversion fails it falls back to the old SVG copy.
@@ -79,7 +79,7 @@ Motion export: when the page uses GSAP (with or without ScrollTrigger), the Figm
 - **Motion to Figma rebuilt:** GSAP + CSS + recorded animations; layers captured on the most visible frame; dense keyframes relative to it; wrapper frame for animated roots; unique keyframe keys (no more scrambling after 90 keyframes); animated layers named after their element; parent motion applied to children (marquee halves).
 - **Images in Figma copies:** custom image loader (download, then screenshot crop, then placeholder); optional "images from other sites" permission (`permission.html`).
 - **Fixes:** copies no longer hang in background tabs; hidden elements no longer chosen as the capture frame.
-- Verified on madewithgsap.com: every homepage animation exports to code (0 to 0.44 px from the original) and pastes into Figma with playable Motion keyframes.
+- Tested during development on madewithgsap.com (one site, Chrome): every homepage animation exported to code within 0 to 0.44 px of the original and pasted into Figma with playable Motion keyframes. Figma Motion is in open beta, so this can change with Figma updates.
 
 ## v3.2.0 - Copy a section with its motion
 - Figma menu › **A section with its motion**: the picker selects the whole section; the copy becomes a scroll story in Figma (viewport frame, section slides up as scrolling, scroll animations placed at their scroll position, scrubbed ones stretched to their scroll distance, pins held in place, loops repeated).
@@ -87,4 +87,10 @@ Motion export: when the page uses GSAP (with or without ScrollTrigger), the Figm
 - Absolute layout for section copies (no auto layout) so layers line up with their keyframes; transparent sections get the background visible behind them.
 - Blue Dot remembers every animation that plays while it is open (the Recorder runs quietly in the background).
 - Clipboard writes that stall after long conversions fall back to a "Copy now" button; PRO badge layout fixed.
-- Verified on madewithgsap.com's pinned scroll gallery: predicted on-screen positions match the live page within 0.3 px along the scrubbed timeline. Effects that react to scroll speed (created by scripts on the fly) are not part of a fixed timeline and are not exported.
+- Tested during development on madewithgsap.com's pinned scroll gallery (one site, Chrome): predicted on-screen positions matched the live page within 0.3 px along the scrubbed timeline. Effects that react to scroll speed (created by scripts on the fly) are not part of a fixed timeline and are not exported.
+
+## v3.2.1 - reliability fixes
+- **Section copy to Figma:** a scripting error could fire after the clipboard write, so a successful copy could end without its confirmation message. Fixed.
+- **Closing cleans up fully:** every page/window listener, observer, recorder timer, an active Watch and a running flow scan are now stopped when Blue Dot closes, so reopening starts clean.
+- **Motion Recorder:** CSS transitions are recorded too (only CSS animations were before), and GSAP is hooked even when it loads after recording started, matching what the panel says.
+- **Motion hold recovery:** the page's animations and scroll position are restored even when the motion read times out or fails midway.

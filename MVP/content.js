@@ -14,6 +14,11 @@
   const withBusy = async (fn) => { busy(true); try { return await fn(); } finally { setTimeout(() => busy(false), 350); } };
   let mode = null, picking = false, selected = null, finishOpen = false, figmaArmed = false, motionArmed = false, codeArmed = false, sectionArmed = false;
 
+  /* every listener on document/window and every observer is tracked, so closing removes it all */
+  const lifeLs = [], lifeObs = [];
+  const onL = (t, n, f, o) => { t.addEventListener(n, f, o); lifeLs.push([t, n, f, o]); };
+  const obsL = (o) => { lifeObs.push(o); return o; };
+
   /* ---------- helpers ---------- */
   const isUI = (el) => el.id === HOST_ID || (el.closest && el.closest("#" + HOST_ID));
   const toHex = (c) => {
@@ -1154,9 +1159,9 @@
   scheduleIssues = () => { clearTimeout(t_); t_ = setTimeout(refreshIssues, 220); };
   let raf_ = 0;
   const reflow = () => { if (raf_) return; raf_ = requestAnimationFrame(() => { raf_ = 0; if (issues.length) { drawMarkers(); if (activeKey) placePop(); } }); };
-  window.addEventListener("scroll", reflow, true); window.addEventListener("resize", reflow);
-  document.addEventListener("mousedown", (e) => { const p = e.composedPath(); if (activeKey && !p.includes(pop) && !p.some((n) => n.classList && n.classList.contains("sq"))) closePop(); }, true);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && activeKey) closePop(); }, true);
+  onL(window, "scroll", reflow, true); onL(window, "resize", reflow);
+  onL(document, "mousedown", (e) => { const p = e.composedPath(); if (activeKey && !p.includes(pop) && !p.some((n) => n.classList && n.classList.contains("sq"))) closePop(); }, true);
+  onL(document, "keydown", (e) => { if (e.key === "Escape" && activeKey) closePop(); }, true);
 
   /* ---------- left panel renderers ---------- */
   const setActive = () => {
@@ -1410,7 +1415,7 @@
     };
     place();
   };
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && flowMark) clearMark(); }, true);
+  onL(document, "keydown", (e) => { if (e.key === "Escape" && flowMark) clearMark(); }, true);
   const goTo = (f) => {
     if (!f.loc) return;
     const here = route(location.href).replace(/\/index\.(html?|php)$/, "/"), there = f.page.replace(/\/index\.(html?|php)$/, "/");
@@ -1901,8 +1906,8 @@
     const r = el.getBoundingClientRect(), p = lp.getBoundingClientRect();
     if (r.right > p.left - 8 && r.left < p.right && r.bottom > p.top && r.top < p.bottom) peek(true);
   };
-  new MutationObserver(() => { host.classList.toggle("lpopen", lp.classList.contains("show")); host.style.setProperty("--lpw", lp.style.width || "340px"); if (!lp.classList.contains("show")) peek(false); }).observe(lp, { attributes: true, attributeFilter: ["class", "style"] });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && lp.classList.contains("peek")) peek(false); }, true);
+  obsL(new MutationObserver(() => { host.classList.toggle("lpopen", lp.classList.contains("show")); host.style.setProperty("--lpw", lp.style.width || "340px"); if (!lp.classList.contains("show")) peek(false); })).observe(lp, { attributes: true, attributeFilter: ["class", "style"] });
+  onL(document, "keydown", (e) => { if (e.key === "Escape" && lp.classList.contains("peek")) peek(false); }, true);
 
   const openMode = (m) => {
     if (mode === "record" && m !== "record") stopRecording(true);
@@ -1912,7 +1917,7 @@
     lp.style.width = m === "review" || m === "flow" ? "380px" : "340px";
     if (m !== "flow" && flowAbort) flowAbort.abort();
     lp.innerHTML = `<div class="empty">Scanning\u2026</div>`;
-    setTimeout(() => { lp.classList.remove("swapin"); void lp.offsetWidth; lp.classList.add("swapin"); ({ colours: colourPanel, text: textPanel, spacing: spacingPanel, review: reviewPanel, flow: flowPanel, issues: issuesPanel, gallery: galleryPanel, sessions: sessionsPanel, effects: effectsPanel })[m](); }, 20);
+    setTimeout(() => { lp.classList.remove("swapin"); void lp.offsetWidth; lp.classList.add("swapin"); const P = ({ colours: colourPanel, text: textPanel, spacing: spacingPanel, review: reviewPanel, flow: flowPanel, issues: issuesPanel, gallery: galleryPanel, sessions: sessionsPanel, effects: effectsPanel })[m]; if (P) P(); }, 20); /* modes without a panel (record) just leave the panel closed */
   };
 
   /* ---------- element picker ---------- */
@@ -2065,7 +2070,7 @@
     if (t !== hovBase) { hovBase = t; hovEl = t; }
     drawHover();
   };
-  document.addEventListener("keydown", (e) => {
+  onL(document, "keydown", (e) => {
     if (!picking || !hovEl || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
     if (e.key === "ArrowUp") { const p = hovEl.parentElement; if (p && p !== document.body && p !== document.documentElement) hovEl = p; }
     else if (hovEl !== hovBase) { let n = hovBase; while (n && n.parentElement !== hovEl) n = n.parentElement; if (n) hovEl = n; }
@@ -2084,9 +2089,9 @@
     showElement(t);
   };
   const swallow = (e) => { if (picking && target(e)) { e.preventDefault(); e.stopPropagation(); } };
-  document.addEventListener("mousemove", onMove, true);
-  document.addEventListener("click", onClick, true);
-  ["mousedown", "mouseup", "pointerdown", "pointerup", "submit"].forEach((n) => document.addEventListener(n, swallow, true));
+  onL(document, "mousemove", onMove, true);
+  onL(document, "click", onClick, true);
+  ["mousedown", "mouseup", "pointerdown", "pointerup", "submit"].forEach((n) => onL(document, n, swallow, true));
   const setPicking = (on) => {
     if (on !== picking) busy(on);
     if (!on && /picks the parent/.test(toast.textContent)) toast.classList.remove("show");
@@ -2120,7 +2125,7 @@
     const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? p.clientHeight : 1;
     p.scrollTop += e.deltaY * k;
   };
-  window.addEventListener("wheel", onWheel, { capture: true, passive: false });
+  onL(window, "wheel", onWheel, { capture: true, passive: false });
   let mv = null;
   root.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
@@ -2131,7 +2136,7 @@
     mv = { p, dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, id: e.pointerId };
     p.classList.add("moving"); e.stopImmediatePropagation(); e.preventDefault();
   }, true);
-  window.addEventListener("pointermove", (e) => {
+  onL(window, "pointermove", (e) => {
     if (!mv) return;
     const vw = innerWidth, vh = innerHeight;
     const x = Math.max(8, Math.min(vw - mv.w - 8, e.clientX - mv.dx));
@@ -2141,21 +2146,21 @@
     e.preventDefault();
   }, true);
   const endMove = () => { if (mv) { mv.p.classList.remove("moving"); mv = null; } };
-  window.addEventListener("pointerup", endMove, true); window.addEventListener("pointercancel", endMove, true);
+  onL(window, "pointerup", endMove, true); onL(window, "pointercancel", endMove, true);
   let drag = null;
   root.addEventListener("pointerdown", (e) => {
     const p = panelOf(e); if (!p || e.button !== 0) return;
     if (e.composedPath().some((n) => n.nodeType === 1 && /^(INPUT|TEXTAREA|SELECT|BUTTON|A|LABEL|SUMMARY)$/.test(n.tagName) || (n.nodeType === 1 && (n.isContentEditable || n.classList && n.classList.contains("sw"))))) return;
     drag = { p, y: e.clientY, top: p.scrollTop, moved: false, id: e.pointerId };
   });
-  window.addEventListener("pointermove", (e) => {
+  onL(window, "pointermove", (e) => {
     if (!drag) return;
     const dy = e.clientY - drag.y;
     if (!drag.moved && Math.abs(dy) > 4) { drag.moved = true; drag.p.classList.add("dragging"); }
     if (drag.moved) { drag.p.scrollTop = drag.top - dy; e.preventDefault(); }
   }, true);
   const endDrag = () => { if (drag) { drag.p.classList.remove("dragging"); const was = drag.moved; drag = null; if (was) { const swallowClick = (ev) => { ev.stopPropagation(); ev.preventDefault(); }; root.addEventListener("click", swallowClick, { capture: true, once: true }); setTimeout(() => root.removeEventListener("click", swallowClick, true), 50); } } };
-  window.addEventListener("pointerup", endDrag, true); window.addEventListener("pointercancel", endDrag, true);
+  onL(window, "pointerup", endDrag, true); onL(window, "pointercancel", endDrag, true);
 
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
@@ -2243,7 +2248,7 @@
     b.addEventListener("click", (e) => { e.stopPropagation(); const x = root.querySelector('.bar .btn[data-m=pclose]'); if (x) x.click(); });
     ph.appendChild(b);
   };
-  [lp, rp].forEach((pn) => { if (!pn) return; new MutationObserver(() => addClose(pn)).observe(pn, { childList: true, subtree: true }); addClose(pn); });
+  [lp, rp].forEach((pn) => { if (!pn) return; obsL(new MutationObserver(() => addClose(pn))).observe(pn, { childList: true, subtree: true }); addClose(pn); });
 
   const armSection = () => {
     if (mode) openMode(null); finishOpen = false; rp.classList.remove("show");
@@ -2387,12 +2392,11 @@
     let writeP = null;
     try { window.focus(); writeP = navigator.clipboard.write([new ClipboardItem({ "text/html": htmlP.then((h) => new Blob([h], { type: "text/html" })) })]); writeP.catch(() => {}); } catch (e) { writeP = null; }
     say(`Preparing ${isPage ? "the page" : "the element"} for Figma\u2026`, null, { work: true });
-    let html = null, mo = null;
+    let html = null, mo = null, m = null;
     try {
       if (!(await ensureFigma())) throw new Error("converter not loaded");
       const ask = (type, ms) => new Promise((res) => { const t = setTimeout(() => res(null), ms); try { chrome.runtime.sendMessage({ type }, (x) => { clearTimeout(t); res(x && x.ok ? x.data : null); }); } catch (e) { clearTimeout(t); res(null); } });
       /* 1. find the motion and pause every animation on its most visible frame */
-      let m = null;
       if (!isPage) { el.setAttribute("data-dsx-root", opt.story ? "figma-story" : "1"); m = await ask("dsx-motion-collect", 12000); el.removeAttribute("data-dsx-root"); }
       let result;
       /* a section with no background of its own sits on the page's background: give the copy what you actually see */
@@ -2411,7 +2415,7 @@
         const f = globalThis.__dsxFigma.createFigmaConverter({ trace: true, imageLoader: imgLoad, layout: opt.story ? "absolute" : "auto" });
         window.__dsxImgStats = imgLoad.stats;
         result = await f.convert({ element: el, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)), name: isPage ? (document.title || location.hostname) : (el.id ? "#" + el.id : selectorOf(el)) });
-      } finally { if (bgSet) el.style.backgroundColor = bg0; if (m) await ask("dsx-motion-restore", 3000); /* 3. let the page play again */ }
+      } finally { if (bgSet) el.style.backgroundColor = bg0; if (!isPage) await ask("dsx-motion-restore", 3000); /* 3. let the page play again - always: a timed-out or failed collect can still have held frames */ }
       html = result.toClipboardHtml();
       /* 4. write the keyframes onto the layers */
       try { if (m && m.items && m.items.length) { mo = globalThis.__dsxFigma.applyMotion(result, m); html = mo.html; } else if (m && m.notes) host.dataset.motionNote = m.notes.join(" "); }
@@ -2951,7 +2955,7 @@
     let hovered = 0, visibleAt = 0; const seen = new Map(); let firstChange = null;
     const onEnter = () => { hovered = performance.now() - t0; };
     el.addEventListener("mouseenter", onEnter);
-    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting && !visibleAt) visibleAt = performance.now() - t0; }, { threshold: 0.15 }); io.observe(el);
+    const io = obsL(new IntersectionObserver(([e]) => { if (e.isIntersecting && !visibleAt) visibleAt = performance.now() - t0; }, { threshold: 0.15 })); io.observe(el);
     let raf = 0, lastT = 0;
     const loop = (now) => {
       const t = now - t0;
@@ -3248,7 +3252,7 @@
     bar.querySelector(".fp").onclick = () => go(-1); bar.querySelector(".fn").onclick = () => go(1); bar.querySelector(".fx").onclick = stopFind;
     st.go = go; place(); go(0);
   };
-  document.addEventListener("keydown", (e) => {
+  onL(document, "keydown", (e) => {
     if (!finder) return;
     const t = e.composedPath()[0];
     if (e.key === "Escape") { stopFind(); return; }
@@ -3420,7 +3424,7 @@
       else { finishOpen = false; rp.classList.remove("show"); codeArmed = true; setPicking(true); codeArmed = true; setActive(); say("Click the element to copy as code. \u2191 picks the parent, Esc cancels."); }
     });
   };
-  document.addEventListener("mousedown", (e) => { if (figMenu && !e.composedPath().includes(figMenu) && !e.composedPath().some((n) => n.dataset && (n.dataset.m === "figma" || n.dataset.m === "shot" || n.dataset.m === "motion"))) closeFigMenu(); }, true);
+  onL(document, "mousedown", (e) => { if (figMenu && !e.composedPath().includes(figMenu) && !e.composedPath().some((n) => n.dataset && (n.dataset.m === "figma" || n.dataset.m === "shot" || n.dataset.m === "motion"))) closeFigMenu(); }, true);
 
   /* ---------- Motion Recorder: keep every animation that plays, so finished ones can still be copied ---------- */
   let recTimer = 0, recPoll = 0, recT0 = 0;
@@ -3446,7 +3450,7 @@
     const st = await recAsk("dsx-rec-start");
     if (!st) { say("Could not start recording on this page."); return; }
     mode = "record"; setActive(); lp.classList.add("show"); lp.style.width = "380px"; recT0 = Date.now();
-    if (!st.gsap) say("No GSAP on this page yet: CSS animations are recorded, GSAP ones once it loads.");
+    if (!st.gsap) say("No GSAP on this page yet: CSS animations and transitions are recorded, and GSAP animations are recorded once it loads.");
     const tick = async () => { if (mode !== "record") return; drawRec(await recAsk("dsx-rec-list"), true); };
     clearInterval(recPoll); recPoll = setInterval(tick, 1000); tick();
     clearTimeout(recTimer); recTimer = setTimeout(() => stopRecording(), REC_MAX * 1000);
@@ -3459,7 +3463,7 @@
     recAsk("dsx-rec-start"); /* keep remembering in the background */
     say(data && data.rows && data.rows.length ? `Recorded ${data.rows.length} animation${data.rows.length === 1 ? "" : "s"}. Inspect one to copy its code or send it to Figma.` : "No animations were recorded.");
   };
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && figMenu) closeFigMenu(); }, true);
+  onL(document, "keydown", (e) => { if (e.key === "Escape" && figMenu) closeFigMenu(); }, true);
 
   /* ---------- bar wiring ---------- */
   root.querySelectorAll(".bar .btn[data-m]").forEach((b) => b.addEventListener("click", () => {
@@ -3483,7 +3487,7 @@
     releaseTools(m);
     openMode(mode === m ? null : m);
   }));
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && picking) setPicking(false); }, true);
+  onL(document, "keydown", (e) => { if (e.key === "Escape" && picking) setPicking(false); }, true);
 
 
   /* ---------- tooltips with shortcut hints, keyboard shortcuts ---------- */
@@ -3517,7 +3521,7 @@
     tip.style.top = (r.bottom + 8 + tip.offsetHeight > innerHeight ? r.top - tip.offsetHeight - 8 : r.bottom + 8) + "px";
   });
   root.addEventListener("mouseout", (e) => { if (e.target.closest && e.target.closest(".panel [data-tip]")) tip.classList.remove("show"); });
-  document.addEventListener("keydown", (e) => {
+  onL(document, "keydown", (e) => {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const m = Object.keys(KEYS).find((k) => KEYS[k][0] === e.code);
     if (!m) return;
@@ -3527,7 +3531,7 @@
     if (m === "motion") { closeFigMenu(); releaseTools("motion"); return armMotion(!motionArmed); } /* the shortcut goes straight to Inspect */
     btn.click();
   }, true);
-  document.addEventListener("keydown", (e) => {
+  onL(document, "keydown", (e) => {
     if (e.key !== "Escape" || picking || activeKey || !mode) return;
     const a = document.activeElement; if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
     openMode(null);
@@ -3560,13 +3564,13 @@
     b.classList.toggle("compact", want >= 1); b.classList.toggle("tight", want >= 2);
     if (narrow) requestAnimationFrame(() => { host.style.setProperty("--barh", Math.round(b.getBoundingClientRect().height) + "px"); });
   };
-  new MutationObserver(() => { if (!fitting) setTimeout(fitBar, 0); }).observe(host, { attributes: true, attributeFilter: ["class", "style"] });
+  obsL(new MutationObserver(() => { if (!fitting) setTimeout(fitBar, 0); })).observe(host, { attributes: true, attributeFilter: ["class", "style"] });
   /* only re-measure when something that changes the bar's natural width changed (a button shown/hidden, collapse state).
      Selecting a tool toggles .on only; measuring then used to switch transitions off for a frame and made the bar snap. */
   let barSig = "";
   const sigOf = () => { const b = $("#bar"); return b.className.replace(/\b(compact|tight|nofx)\b/g, "").trim() + "|" + [...b.querySelectorAll(".btn")].map((x) => (x.classList.contains("gone") ? 1 : 0) + (x.classList.contains("has") ? "h" : "")).join(""); };
-  new MutationObserver(() => { if (fitting) return; const sg = sigOf(); if (sg === barSig) return; barSig = sg; setTimeout(fitBar, 0); }).observe($("#bar"), { attributes: true, attributeFilter: ["class"], subtree: true });
-  window.addEventListener("resize", fitBar);
+  obsL(new MutationObserver(() => { if (fitting) return; const sg = sigOf(); if (sg === barSig) return; barSig = sg; setTimeout(fitBar, 0); })).observe($("#bar"), { attributes: true, attributeFilter: ["class"], subtree: true });
+  onL(window, "resize", fitBar);
   setTimeout(fitBar, 400);
 
   /* ---------- drag the bar by the Design button; position remembered per site ---------- */
@@ -3586,13 +3590,13 @@
   const brandBtn = root.querySelector(".btn.brand");
   let dragSt = null, dragged = false;
   brandBtn.addEventListener("mousedown", (e) => { if (e.button !== 0) return; const r = barEl.getBoundingClientRect(); dragSt = { sx: e.clientX, sy: e.clientY, x: r.left, y: r.top }; dragged = false; });
-  window.addEventListener("mousemove", (e) => {
+  onL(window, "mousemove", (e) => {
     if (!dragSt) return;
     if (!dragged && Math.hypot(e.clientX - dragSt.sx, e.clientY - dragSt.sy) < 5) return;
     dragged = true; barEl.classList.add("dragging");
     placeBar(dragSt.x + e.clientX - dragSt.sx, dragSt.y + e.clientY - dragSt.sy);
   }, true);
-  window.addEventListener("mouseup", () => {
+  onL(window, "mouseup", () => {
     if (!dragSt) return;
     if (dragged) { const r = barEl.getBoundingClientRect(); store.set(POSKEY, { x: r.left, y: r.top }); setTimeout(() => { dragged = false; }, 0); }
     dragSt = null; barEl.classList.remove("dragging");
@@ -3600,19 +3604,23 @@
   brandBtn.addEventListener("click", (e) => { if (dragged) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
   brandBtn.addEventListener("contextmenu", (e) => { e.preventDefault(); resetBar(); store.del(POSKEY); });
   store.get(POSKEY).then((p) => { if (p && typeof p.x === "number") placeBar(p.x, p.y); });
-  window.addEventListener("resize", () => { if (barEl.style.left) { const r = barEl.getBoundingClientRect(); placeBar(r.left, r.top); } });
+  onL(window, "resize", () => { if (barEl.style.left) { const r = barEl.getBoundingClientRect(); placeBar(r.left, r.top); } });
 
   host.classList.add("away");
   setTimeout(() => setCollapsed(false), 160);
   /* remember every animation that plays while Blue Dot is open, so a section you already scrolled past still copies */
   setTimeout(() => { try { chrome.runtime.sendMessage({ type: "dsx-rec-start" }, () => void chrome.runtime.lastError); } catch (e) {} }, 300);
   const destroy = () => {
-    // closing keeps nothing: edits are temporary
+    // closing keeps nothing: edits are temporary, and nothing keeps running after close
     revertAll(); setPicking(false);
+    try { stopFind(); } catch (e) {}
+    try { if (flowAbort) flowAbort.abort(); } catch (e) {}            /* stop a running flow scan */
+    try { if (motionStop) { motionStop(); motionStop = null; } } catch (e) {}  /* stop an active Watch */
+    clearInterval(recPoll); clearTimeout(recTimer);                  /* recorder UI timers */
     try { chrome.runtime.sendMessage({ type: "dsx-rec-stop" }, () => void chrome.runtime.lastError); } catch (e) {}
-    document.removeEventListener("mousemove", onMove, true);
-    document.removeEventListener("click", onClick, true);
-    window.removeEventListener('scroll', reflow, true); window.removeEventListener('resize', reflow); host.remove(); sheet.remove(); delete window.__dsx;
+    lifeObs.splice(0).forEach((o) => { try { o.disconnect(); } catch (e) {} });
+    lifeLs.splice(0).forEach(([t, n, f, o]) => { try { t.removeEventListener(n, f, o); } catch (e) {} });
+    host.remove(); sheet.remove(); delete window.__dsx;
   };
   /* closing discards edits, so ask once when there is unsaved work */
   let closeArm = 0;
