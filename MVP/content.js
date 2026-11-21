@@ -3090,8 +3090,10 @@
     if (html.length > 400000) throw new Error("this element is too large for a preview card");
     const g = eff.gsap ? eff.gsap.v : null;
     const tags = [];
-    if (probe && probe.libs && probe.libs.length) tags.push(probe.libs[0].name);
+    /* tag the animation's own source first; a library found on the page only labels the card when the effect actually came from it */
+    if (eff.gsap) tags.push("GSAP");
     else if (eff.anim) tags.push(/transition/i.test(eff.anim.type) ? "CSS transition" : "CSS animation"); else if (eff.kind === "hover") tags.push("Hover"); else if (eff.kind === "sampled") tags.push("Sampled");
+    else if (probe && probe.libs && probe.libs.length) tags.push(probe.libs[0].name);
     if (g && g.ease) tags.push(String(g.ease)); else if (eff.timing.easing) tags.push(easeName(eff.timing.easing));
     tags.push((eff.gsap ? Math.round(((g && g.duration) || eff.timing.duration / 1000) * 100) / 100 + "s" : (eff.timing.duration / 1000).toFixed(2).replace(/0$/, "") + "s"));
     if (eff.timing.iterations === "infinite") tags.push(eff.timing.direction === "alternate" || (g && g.yoyo) ? "loop · yoyo" : "loop");
