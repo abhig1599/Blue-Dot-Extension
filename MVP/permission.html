@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Allow images · Blue Dot</title><link rel="icon" href="icons/32.png"><link rel="stylesheet" href="gallery.css">
+<style>.wrap{max-width:520px;margin:12vh auto;padding:0 24px}.wrap h1{font-size:24px;margin:18px 0 8px}.wrap p{color:var(--fg2);margin:0 0 14px}.wrap ul{color:var(--fg2);padding-left:18px;margin:0 0 22px}.row{display:flex;gap:10px;align-items:center}.ok{color:#4ad37f;font-weight:600}</style></head>
+<body><div class="wrap">
+<div class="brand"><img src="icons/32.png" alt="" width="22" height="22"><span>Blue Dot</span><b>Images for Figma</b></div>
+<h1>Keep real images when you copy to Figma</h1>
+<p>Many sites load images from another domain. The page is not allowed to read those, so Blue Dot puts a placeholder in their place.</p>
+<ul><li>Allow it once and Blue Dot downloads those images itself when you copy.</li><li>Images are only read when you press Copy to Figma, and nothing leaves your browser except to your clipboard.</li><li>You can remove it any time in <b>chrome://extensions</b> › Blue Dot › Site access.</li></ul>
+<div class="row"><button class="pri" id="allow">Allow images from other sites</button><span id="state"></span></div>
+</div><script src="permission.js"></script></body></html>

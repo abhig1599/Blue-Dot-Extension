@@ -38,9 +38,20 @@
     if (timing.iterations === "Infinity" || timing.iterations === "infinite") timing.iterations = Infinity;
     const once = timing.iterations !== Infinity;
     if (it.hover) Object.assign(timing, { iterations: Infinity, direction: "alternate", endDelay: 500 });
+    let extra = [];
     const play = () => {
       if (!alive) return;
-      try { anim && anim.cancel(); } catch (e) {}
+      try { anim && anim.cancel(); } catch (e) {} extra.forEach((a) => { try { a.cancel(); } catch (e) {} }); extra = [];
+      if (it.group && it.group.length) {
+        /* a whole component: every animated child plays its own keyframes */
+        let longest = null, endAt = 0;
+        it.group.forEach((g) => { let node = el; if (g.path !== ":scope") { try { node = el.querySelector(g.path); } catch (e) { node = null; } } if (!node) return;
+          const tm = Object.assign({}, g.timing, { fill: "both" }); if (tm.iterations === "Infinity") tm.iterations = Infinity;
+          const a = node.animate(g.kfs, tm); a.playbackRate = slow ? 0.25 : 1; extra.push(a); const e = (tm.delay || 0) + tm.duration * (tm.iterations === Infinity ? 0 : tm.iterations); if (e >= endAt) { endAt = e; longest = a; } });
+        anim = extra[0] || null;
+        if (longest && endAt > 0) longest.onfinish = () => { wait = setTimeout(play, 900); };
+        return;
+      }
       anim = el.animate(it.kfs, Object.assign({}, timing, { delay: Math.min(timing.delay || 0, 1200), fill: "both" }));
       anim.playbackRate = slow ? 0.25 : 1;
       if (once && !it.hover) anim.onfinish = () => { wait = setTimeout(play, 900); };
@@ -48,10 +59,10 @@
     if (!reduce) play();
     return {
       replay: play,
-      rate: (r) => { if (anim) anim.playbackRate = r; },
-      pause: () => { if (anim && anim.playState === "running") anim.pause(); },
-      resume: () => { if (anim && anim.playState === "paused") anim.play(); },
-      destroy: () => { alive = false; clearTimeout(wait); try { anim && anim.cancel(); } catch (e) {} fit.remove(); }
+      rate: (r) => { [anim, ...extra].forEach((a) => { if (a) a.playbackRate = r; }); },
+      pause: () => { [anim, ...extra].forEach((a) => { if (a && a.playState === "running") a.pause(); }); },
+      resume: () => { [anim, ...extra].forEach((a) => { if (a && a.playState === "paused") a.play(); }); },
+      destroy: () => { alive = false; clearTimeout(wait); [anim, ...extra].forEach((a) => { try { a && a.cancel(); } catch (e) {} }); fit.remove(); }
     };
   };
 

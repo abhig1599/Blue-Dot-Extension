@@ -871,6 +871,18 @@
     .gcmd{display:flex;align-items:center;gap:6px;margin:6px 0 4px}
     .gcmd code{flex:1;padding:5px 8px;border-radius:var(--r-sm);background:var(--s0);box-shadow:inset 0 0 0 1px var(--line)}
     .gsnip{margin:6px 0 2px;padding:8px 10px;border-radius:var(--r-sm);background:var(--s0);box-shadow:inset 0 0 0 1px var(--line);color:var(--fg);font:11px/1.5 var(--mono);white-space:pre;overflow:auto}
+    /* Motion Recorder */
+    .pro{flex:none;padding:1px 6px;border-radius:4px;background:linear-gradient(135deg,#3d9bff,#a259ff);color:#fff;font:700 9.5px var(--font);letter-spacing:.06em}
+    .recbar{display:flex;align-items:center;gap:10px;margin:12px 12px 6px;padding:10px 10px 10px 12px;border-radius:var(--r);background:var(--s2)}
+    .recbar .rectxt{flex:1;color:var(--fg2);font-size:12px;line-height:1.4}
+    .recdot{width:10px;height:10px;border-radius:50%;background:var(--fg3);flex:none}
+    .recbar.live{background:rgba(229,72,77,.12);box-shadow:inset 0 0 0 1px rgba(229,72,77,.35)}
+    .recbar.live .recdot{background:#e5484d;animation:dsxPulse 1s ease-in-out infinite}
+    .recbar.live .rectxt{color:var(--fg)}
+    .recrow{display:flex;align-items:center;gap:10px;padding:9px 12px 9px 16px;border-bottom:1px solid var(--line)}
+    .recrow:hover{background:rgba(255,255,255,.04)}
+    .recrow .rtrig{flex:none;font:600 10.5px var(--font);color:var(--acc-t);background:var(--acc-bg);padding:2px 7px;border-radius:999px}
+    .recrow .ra{display:flex;gap:4px;flex:none}
     /* Figma / screenshot menu headings and two-line items */
     .fmenu .fmh{padding:8px 10px 4px;font:600 10.5px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--fg3)}
     .fmenu .fmh:not(:first-child){margin-top:4px;border-top:1px solid var(--line);padding-top:10px}
@@ -1837,6 +1849,7 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && lp.classList.contains("peek")) peek(false); }, true);
 
   const openMode = (m) => {
+    if (mode === "record" && m !== "record") stopRecording(true);
     mode = m; setActive();
     if (!m || m === "pick") { if (!m) lp.classList.remove("show"); return; }
     lp.classList.add("show");
@@ -2194,6 +2207,45 @@
     return !!globalThis.__dsxFigma;
   };
   const copyFigma = (el) => withBusy(() => copyFigma0(el));
+  /* Images on another domain (CDNs) cannot be downloaded from the page, so the converter used to drop them,
+     and their animation with them. Try a normal download, then crop the image from one screenshot of the tab,
+     then fall back to a neutral placeholder so the layer and its motion always survive. */
+  const figmaImageLoader = (root) => {
+    let shot = null; const stats = { fetched: 0, cropped: 0, placeholder: 0 };
+    const grab = () => shot || (shot = (async () => {
+      const prev = host.style.visibility; host.style.visibility = "hidden";
+      /* animation frames do not run in background tabs, so never wait on them alone */
+      await Promise.race([new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))), new Promise((r) => setTimeout(r, 120))]);
+      if (document.hidden) { host.style.visibility = prev; return null; } /* a background tab cannot be captured: use placeholders */
+      try { const res = await new Promise((r) => { try { chrome.runtime.sendMessage({ type: "dsx-capture" }, r); } catch (e) { r(null); } }); return res && res.ok ? await loadImg(res.dataUrl) : null; }
+      catch (e) { return null; } finally { host.style.visibility = prev; }
+    })());
+    const toBytes = async (canvas) => { const b = await new Promise((r) => canvas.toBlob(r, "image/png")); return { bytes: await b.arrayBuffer(), mimeType: "image/png" }; };
+    const findImg = (src) => [...(root.querySelectorAll ? root.querySelectorAll("img") : []), ...(root.tagName === "IMG" ? [root] : [])].find((i) => i.currentSrc === src || i.src === src);
+    const loader = async ({ src }) => {
+      try { const r = await fetch(src, { credentials: "omit" }); if (r.ok) { const b = await r.blob(); if (b.size) { stats.fetched++; return { bytes: await b.arrayBuffer(), mimeType: b.type || "image/png" }; } } } catch (e) {}
+      /* the extension itself can download it when the optional "images from other sites" permission is on */
+      try {
+        const x = await new Promise((r) => { const t = setTimeout(() => r(null), 8000); try { chrome.runtime.sendMessage({ type: "dsx-fetch-image", src }, (v) => { clearTimeout(t); r(v); }); } catch (e) { clearTimeout(t); r(null); } });
+        if (x && x.ok) { const bin = atob(x.b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); stats.fetched++; return { bytes: u.buffer, mimeType: x.mime }; }
+        if (x && x.reason === "no-permission") stats.needsPermission = true;
+      } catch (e) {}
+      const img = findImg(src), rr = img && img.getBoundingClientRect();
+      if (rr && rr.width > 2 && rr.height > 2 && rr.bottom > 0 && rr.right > 0 && rr.top < innerHeight && rr.left < innerWidth) {
+        const sh = await grab();
+        if (sh) {
+          const k = sh.width / innerWidth, sx = Math.max(0, rr.left * k), sy = Math.max(0, rr.top * k), sw = Math.min(sh.width - sx, rr.width * k), shh = Math.min(sh.height - sy, rr.height * k);
+          if (sw > 1 && shh > 1) { const c = document.createElement("canvas"); c.width = Math.round(sw); c.height = Math.round(shh); c.getContext("2d").drawImage(sh, sx, sy, sw, shh, 0, 0, c.width, c.height); stats.cropped++; return toBytes(c); }
+        }
+      }
+      const w = Math.max(8, Math.min(1600, Math.round((img && img.naturalWidth) || (rr && rr.width) || 200))), h = Math.max(8, Math.min(1600, Math.round((img && img.naturalHeight) || (rr && rr.height) || 150)));
+      const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d");
+      g.fillStyle = "#e4e4e7"; g.fillRect(0, 0, w, h); g.strokeStyle = "#a1a1aa"; g.lineWidth = Math.max(1, Math.min(w, h) / 60);
+      const u = Math.min(w, h) / 5; g.strokeRect(w / 2 - u, h / 2 - u * 0.75, u * 2, u * 1.5); g.beginPath(); g.moveTo(w / 2 - u, h / 2 + u * 0.5); g.lineTo(w / 2 - u * 0.2, h / 2 - u * 0.1); g.lineTo(w / 2 + u, h / 2 + u * 0.75); g.stroke();
+      stats.placeholder++; return toBytes(c);
+    };
+    loader.stats = stats; return loader;
+  };
   const PASTE = MAC_K();
   function MAC_K() { return /Mac|iPhone|iPad/.test(navigator.platform || "") ? "\u2318V" : "Ctrl+V"; }
   let lastFigma = null;
@@ -2215,16 +2267,23 @@
     let html = null, mo = null;
     try {
       if (!(await ensureFigma())) throw new Error("converter not loaded");
-      const r = el.getBoundingClientRect();
-      const f = globalThis.__dsxFigma.createFigmaConverter({ trace: true });
-      const result = await f.convert({ element: el, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)), name: isPage ? (document.title || location.hostname) : (el.id ? "#" + el.id : selectorOf(el)) });
-      html = result.toClipboardHtml();
+      const ask = (type, ms) => new Promise((res) => { const t = setTimeout(() => res(null), ms); try { chrome.runtime.sendMessage({ type }, (x) => { clearTimeout(t); res(x && x.ok ? x.data : null); }); } catch (e) { clearTimeout(t); res(null); } });
+      /* 1. find the motion and pause every animation on its most visible frame */
+      let m = null;
+      if (!isPage) { el.setAttribute("data-dsx-root", "1"); m = await ask("dsx-motion-collect", 8000); el.removeAttribute("data-dsx-root"); }
+      let result;
       try {
-        el.setAttribute("data-dsx-root", "1");
-        const m = await new Promise((res) => { const t = setTimeout(() => res(null), 4000); try { chrome.runtime.sendMessage({ type: "dsx-motion-collect" }, (x) => { clearTimeout(t); res(x && x.ok ? x.data : null); }); } catch (e) { clearTimeout(t); res(null); } });
-        if (m && m.items && m.items.length) { mo = globalThis.__dsxFigma.applyMotion(result, m); html = mo.html; }
-      } catch (e) { host.dataset.motionErr = String(e && e.message || e); }
-      finally { el.removeAttribute("data-dsx-root"); }
+        /* 2. capture the layers on that frame */
+        const r = el.getBoundingClientRect();
+        const imgLoad = figmaImageLoader(el);
+        const f = globalThis.__dsxFigma.createFigmaConverter({ trace: true, imageLoader: imgLoad });
+        window.__dsxImgStats = imgLoad.stats;
+        result = await f.convert({ element: el, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)), name: isPage ? (document.title || location.hostname) : (el.id ? "#" + el.id : selectorOf(el)) });
+      } finally { if (m) await ask("dsx-motion-restore", 3000); /* 3. let the page play again */ }
+      html = result.toClipboardHtml();
+      /* 4. write the keyframes onto the layers */
+      try { if (m && m.items && m.items.length) { mo = globalThis.__dsxFigma.applyMotion(result, m); html = mo.html; } else if (m && m.notes) host.dataset.motionNote = m.notes.join(" "); }
+      catch (e) { host.dataset.motionErr = String(e && e.message || e); }
     } catch (err) { host.dataset.figmaErr = String(err && err.message || err); html = null; }
 
     if (html) {
@@ -2234,7 +2293,9 @@
       if (writeP) { try { await writeP; } catch (e) { ok = false; } }
       if (!ok) { try { await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }) })]); ok = true; } catch (e) {} }
       const anim = mo && mo.withMotion ? ` with ${mo.applied.length} animated layer${mo.applied.length === 1 ? "" : "s"}` : "";
-      if (ok) say(`Copied ${what} as Figma layers${anim}. Press ${PASTE} on the Figma canvas.`, { label: "Copy again", fn: copyFigmaAgain });
+      const ph = window.__dsxImgStats && window.__dsxImgStats.placeholder;
+      if (ok && ph && window.__dsxImgStats.needsPermission) say(`Copied ${what}${anim}. ${ph} image${ph === 1 ? " is" : "s are"} from another site and became placeholder${ph === 1 ? "" : "s"}.`, { label: "Allow images", fn: () => { try { chrome.runtime.sendMessage({ type: "dsx-open-permission" }); } catch (e) {} } });
+      else if (ok) say(`Copied ${what} as Figma layers${anim}. Press ${PASTE} on the Figma canvas.`, { label: "Copy again", fn: copyFigmaAgain });
       else say(`${isPage ? "The page" : "The element"} is ready, but the browser blocked the clipboard.`, { label: "Copy now", fn: copyFigmaAgain });
       return;
     }
@@ -2453,6 +2514,30 @@
     return { kind: "gsap", label: "GSAP tween, converted exactly (values, easing curve, repeat and delay)", kfs, timing, segEase: !!(rd && rep !== 0), stagger: stg ? Math.round(stg * 1000) : 0, trigger: "GSAP tween on " + pick.on, gsap: { v, back, ease: v.ease, stagger: !!v.stagger, repeat: rep } };
   };
   const detectStyle = (m, eff, probe) => {
+    if (eff && eff.kind === "group") {
+      const it = eff.items, visOnly = it.filter((x) => x.kfs.some((k) => k.props.visibility) && !x.kfs.some((k) => k.props.transform || k.props.opacity)).length;
+      const starts = it.map((x) => { const k = x.kfs.findIndex((f, i) => i > 0 && JSON.stringify(f.props) !== JSON.stringify(x.kfs[0].props)); return k > 0 ? x.kfs[k - 1].offset : 0; });
+      const staggered = it.length > 2 && new Set(starts.map((v) => v.toFixed(3))).size > it.length / 2;
+      /* what changes most across the elements: movement, scale, rotation, fade */
+      const ch = { x: 0, y: 0, s: 0, r: 0, o: 0 }, mag = { x: 0, y: 0 };
+      it.forEach((x) => { const tf = x.kfs.map((k) => k.props.transform || "").filter(Boolean), nums = tf.map((t) => (t.match(/-?[\d.]+/g) || []).map(Number));
+        if (nums.length > 1) { const rng = (q) => Math.max(...nums.map((n) => n[q] || 0)) - Math.min(...nums.map((n) => n[q] || 0)); mag.x += rng(0); mag.y += rng(1); if (rng(0) > 1) ch.x++; if (rng(1) > 1) ch.y++; if (rng(2) > 1) ch.r++; if (rng(3) > 0.02) ch.s++; }
+        if (x.kfs.some((k) => k.props.opacity != null && +k.props.opacity < 0.95)) ch.o++; });
+      const most = (k) => ch[k] > it.length / 2;
+      const textish = it.filter((x) => /^span|^div\.char|char|word|line/.test(x.cls)).length > it.length / 2;
+      const unit = textish ? (it.length > 30 ? "letter" : it.length > 6 ? "word" : "line") : "item";
+      let name = visOnly > it.length / 2 ? "Typewriter"
+        : most("r") && most("s") ? (textish ? "Letter scramble" : "Scatter")
+        : most("x") && mag.x > mag.y * 2 ? (most("s") ? `Sliding, scaling ${unit}s` : `Slide-in ${unit}s`)
+        : most("y") && most("o") ? `Fade-up ${unit} reveal`
+        : most("y") ? `Slide-up ${unit} reveal`
+        : most("x") ? `Slide-in ${unit}s`
+        : most("s") ? `Pop-in ${unit}s`
+        : most("o") ? `Fade-in ${unit}s` : "Component animation";
+      if (staggered && !/reveal|Typewriter|scramble/.test(name)) name = "Staggered " + name.charAt(0).toLowerCase() + name.slice(1);
+      const desc = `${it.length} elements animate together${staggered ? ", one after another" : ""}. ${Math.round(it[0].totalMs)}ms${it[0].loop ? ", loops" : ""}${it.some((x) => x.scrub) ? ", follows the scrollbar" : ""}.`;
+      return { name, desc };
+    }
     const st = (probe && probe.st) || [], scrub = st.some((x) => x.scrub), trig = st.length ? (scrub ? "follows the scrollbar" : "plays when scrolled into view") : "";
     const len = (x) => { const mm = /(-?[\d.]+)/.exec(x || ""); return mm ? parseFloat(mm[1]) : 0; };
     const dur = (t) => Math.round(t.duration) + "ms";
@@ -2510,7 +2595,17 @@
     if (st.length) return { name: scrub ? "Scroll-scrubbed motion" : "Scroll-triggered motion", desc: "A ScrollTrigger drives something on or around this element, but no readable from/to values were found. Watch for 8 s and scroll to capture them." };
     return null;
   };
+  const groupEffect = (probe) => {
+    const G = probe && probe.group, items = (G && G.items) || [];
+    if (!items.length || (items.length === 1 && items[0].path === ":scope")) return null;
+    const first = items.find((i) => i.path === ":scope") || items[0];
+    const kids = items.filter((i) => i.path !== ":scope").length;
+    return { kind: "group", label: `Component motion: ${items.length} animated element${items.length === 1 ? "" : "s"}, read frame by frame (exact)`, items, kids,
+      kfs: first.kfs, timing: { duration: first.totalMs, delay: first.delayMs || 0, easing: "linear", iterations: first.loop ? "infinite" : 1, direction: "normal", fill: "both" },
+      scroll: first.scrub ? (first.st || { scrub: true }) : null, trigger: first.scrub ? "scroll (scrubbed)" : "component" };
+  };
   const primaryEffect = (m, el, probe) => {
+    const ge0 = groupEffect(probe); if (ge0) return ge0;
     if (m.samples && m.samples.kfs.length > 1 && !m.anims.some((a) => a.kfs.length > 1 && !a.idle)) return { kind: "sampled", label: "Sampled while you watched (approximate)", kfs: m.samples.kfs, timing: m.samples.timing, trigger: m.samples.trigger };
     const a = m.anims.find((x) => x.kfs.length > 1);
     if (a) return { kind: "anim", label: a.type + ": " + a.name, kfs: a.kfs, timing: a.timing, anim: a, trigger: a.idle ? "set on the element (runs when it renders)" : "running now" };
@@ -2562,7 +2657,26 @@
   };
   const genCode = (m, eff, el, lib, probe) => {
     const sel = selName(el), out = { css: "", js: "", react: "", prompt: "" };
-    if (eff) {
+    if (eff && eff.kind === "group") {
+      const trigEl = probe && probe.trigEl && probe.trigEl !== el && probe.trigEl.isConnected ? probe.trigEl : null, trigSel = trigEl ? probe.trigSel : "";
+      const tlName = "--component-scroll";
+      const kfText = (k) => `{ ${Object.entries(k.props).map(([pn, v]) => `${pn}: ${v};`).join(" ")} }`;
+      const css = [], jsItems = [];
+      let usesScrub = false, rg = null;
+      eff.items.forEach((it, i) => {
+        const childSel = it.path === ":scope" ? sel : sel + it.path.replace(/^:scope/, "");
+        const nm = "motion-" + (i + 1);
+        css.push(`@keyframes ${nm} {\n${it.kfs.map((k) => `  ${Math.round(k.offset * 100000) / 1000}% ${kfText(k)}`).join("\n")}\n}`);
+        if (it.scrub) { usesScrub = true; rg = rg || stRange(it.st || {}, trigEl || el); css.push(`${childSel} {\n  animation: ${nm} linear both;\n  animation-timeline: ${trigSel ? tlName : "view()"};\n  animation-range: ${rg.css};\n}`); }
+        else css.push(`${childSel} {\n  animation: ${nm} ${it.totalMs}ms linear ${it.delayMs || 0}ms ${it.loop ? "infinite" : 1} both;\n}`);
+        jsItems.push({ path: it.path, keyframes: kfToWaapi(it.kfs), timing: it.scrub ? { duration: "auto", fill: "both" } : { duration: it.totalMs, delay: it.delayMs || 0, iterations: it.loop ? "Infinity" : 1, easing: "linear", fill: "both" }, scrub: !!it.scrub });
+      });
+      out.css = `/* ${eff.items.length} animated elements, each with its exact keyframes (read frame by frame from the page) */\n` + (usesScrub && trigSel ? `:root { timeline-scope: ${tlName}; }\n${trigSel} { view-timeline-name: ${tlName}; } /* the ScrollTrigger trigger */\n\n` : "") + css.join("\n\n");
+      const itemsJs = JSON.stringify(jsItems, null, 2).replace(/"Infinity"/g, "Infinity");
+      const run = (rootExpr) => `const root = ${rootExpr};\nITEMS.forEach(({ path, keyframes, timing, scrub }) => {\n  const el = path === ":scope" ? root : root.querySelector(path);\n  if (!el) return;\n  el.animate(keyframes, scrub ? { ...timing, timeline: new ViewTimeline({ subject: ${trigSel ? `document.querySelector("${trigSel}")` : "root"} }), rangeStart: "${rg ? rg.a : "cover 0%"}", rangeEnd: "${rg ? rg.b : "cover 100%"}" } : timing);\n});`;
+      out.js = `// Animates "${sel}" and its ${eff.kids} animated children. No library needed.\nconst ITEMS = ${itemsJs};\n\n` + run(`document.querySelector("${sel}")`);
+      out.react = `"use client";\nimport { useEffect, useRef } from "react";\n\n// Wrap the component markup (the element "${sel}" and its children) in <Motion>.\nconst ITEMS = ${itemsJs};\n\nexport default function Motion({ children }) {\n  const ref = useRef(null);\n  useEffect(() => {\n    if (!ref.current || !ref.current.firstElementChild) return;\n    const anims = [];\n    const root = ref.current.firstElementChild;\n    ITEMS.forEach(({ path, keyframes, timing, scrub }) => {\n      const el = path === ":scope" ? root : root.querySelector(path);\n      if (el) anims.push(el.animate(keyframes, scrub ? { ...timing, timeline: new ViewTimeline({ subject: root }), rangeStart: "${rg ? rg.a : "cover 0%"}", rangeEnd: "${rg ? rg.b : "cover 100%"}" } : timing));\n    });\n    return () => anims.forEach((a) => a.cancel());\n  }, []);\n  return <div ref={ref} style={{ display: "contents" }}>{children}</div>;\n}`;
+    } else if (eff) {
       const t = eff.timing, nm = eff.anim ? eff.anim.name : "dsx-effect";
       const kfCss = eff.anim && eff.anim.ruleText ? eff.anim.ruleText : `@keyframes ${nm} {\n` + eff.kfs.map((k) => `  ${Math.round(k.offset * 100000) / 1000}% { ${Object.entries(k.props).map(([pn, v]) => `${pn}: ${v};`).join(" ")}${k.easing ? ` animation-timing-function: ${k.easing};` : ""} }`).join("\n") + "\n}";
       const stg = eff.stagger || 0, many = stg && document.querySelectorAll(sel).length > 1;
@@ -2669,6 +2783,17 @@
     clone.style.cssText += `;position:absolute;left:0;top:0;margin:0;width:${w}px;height:${h}px;box-sizing:border-box;`;
     wrap.appendChild(clone); stage.appendChild(wrap);
     let anim = null;
+    if (eff && eff.kind === "group") {
+      const anims = [];
+      eff.items.forEach((it) => {
+        let node = clone; if (it.path !== ":scope") { try { node = clone.querySelector(it.path); } catch (e) { node = null; } }
+        if (!node) return;
+        const T = Math.max(60, it.totalMs);
+        anims.push(node.animate(kfToWaapi(it.kfs), { duration: T, delay: Math.min(it.delayMs || 0, 800), iterations: Infinity, easing: "linear", fill: "both", endDelay: it.loop ? 0 : 700 }));
+      });
+      preview = { destroy: () => { anims.forEach((a) => { try { a.cancel(); } catch (e) {} }); stage.innerHTML = ""; }, toggle: () => { const p = anims[0] && anims[0].playState === "paused"; anims.forEach((a) => p ? a.play() : a.pause()); return !!p; }, restart: () => anims.forEach((a) => { a.cancel(); a.play(); }) };
+      return preview;
+    }
     if (eff) {
       const t = eff.timing;
       anim = clone.animate(kfToWaapi(eff.kfs), { duration: Math.max(60, t.duration), delay: Math.min(t.delay, 800), easing: t.easing, iterations: Infinity, direction: eff.kind === "hover" ? "alternate" : t.direction, fill: "both", endDelay: 700 });
@@ -2829,6 +2954,7 @@
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       name: sty ? sty.name : eff.label, desc: sty ? sty.desc : "", kind: eff.kind, hover: eff.kind === "hover",
       kfs: kfToWaapi(eff.kfs), timing: waapiTiming(eff.timing), stagger: eff.stagger || 0,
+      group: eff.kind === "group" ? eff.items.slice(0, 160).map((it) => ({ path: it.path, kfs: kfToWaapi(it.kfs), timing: { duration: it.totalMs, delay: it.delayMs || 0, iterations: it.loop ? "Infinity" : 1, easing: "linear" } })) : null,
       html, w: Math.round(r.width), h: Math.round(r.height),
       code: { css: code.css || "", js: code.js || "", react: code.react || "", gsap: code.lib || "", prompt: code.prompt || "" },
       tags, page: location.href, site: location.hostname, title: document.title, at: Date.now()
@@ -2853,12 +2979,18 @@
         const tr = document.querySelectorAll("[data-dsx-trig]"); probe.trigSel = tr.length === 1 ? selName(tr[0]) : ""; probe.trigEl = tr.length === 1 ? tr[0] : null;
       } catch (e) {}
       document.querySelectorAll("[data-dsx-trig]").forEach((n) => n.removeAttribute("data-dsx-trig"));
+      /* every animated element inside the picked one, sampled as exact keyframes */
+      try {
+        el.setAttribute("data-dsx-root", "code");
+        probe.group = await new Promise((res) => { const t = setTimeout(() => res(null), 8000); try { chrome.runtime.sendMessage({ type: "dsx-motion-collect" }, (x) => { clearTimeout(t); res(x && x.ok ? x.data : null); }); } catch (e) { clearTimeout(t); res(null); } });
+      } catch (e) {} finally { el.removeAttribute("data-dsx-root"); }
       for (let k = 0; k < 64; k++) document.querySelectorAll(`[data-dsx-t${k}]`).forEach((n) => n.removeAttribute(`data-dsx-t${k}`));
     }
     let m; try { m = collectMotion(el); } catch (err) { lp.innerHTML = `<div class="ph"><b>Motion</b></div><div class="empty">Could not read this element's motion: ${esc(err && err.message || err)}</div>`; return; }
     let watched = null;
     const render = () => {
       const eff = primaryEffect(m, el, probe), sty = detectStyle(m, eff, probe), code = genCode(m, eff, el, (probe && probe.libs) || [], probe);
+      host.__last = { eff, sty, code, el }; /* read by automated tests */
       const libs = (probe && probe.libs) || [];
       const chips = libs.length ? libs.map((l) => `<span class="mchip">${esc(l.name)}${l.version ? " <i>" + esc(l.version) + "</i>" : ""}</span>`).join("") : `<span class="mnone">No animation library detected on this page.</span>`;
       const lst = [];
@@ -3105,7 +3237,12 @@
     closeFigMenu(); figMenuOpen = kind; setActive();
     const m = document.createElement("div"); m.className = "fmenu";
     const ic = (d) => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
-    if (kind === "shot") {
+    if (kind === "motion") {
+      m.innerHTML = `<div class="fmh">Motion</div>`
+        + `<button data-a="m-inspect">${ic('<path d="M3 3h9v5M3 3v9h4"/><path d="m9 9 6.5 2.4-2.9 1.2-1.2 2.9z"/>')}<span><b>Inspect an element</b><small>Read its animation, copy code or Figma</small></span><kbd>${MAC ? "\u2325" : "Alt+"}M</kbd></button>`
+        + `<button data-a="m-record">${ic('<circle cx="9" cy="9" r="6.5"/><circle cx="9" cy="9" r="2.6" fill="currentColor"/>')}<span><b>Record the page</b><small>Catch hover, click and scroll animations</small></span><span class="pro">PRO</span></button>`
+        + `<button data-a="m-gallery">${ic('<rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.2"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.2"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.2"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.2"/>')}<span><b>Motion gallery</b><small>Your saved animations</small></span></button>`;
+    } else if (kind === "shot") {
       m.innerHTML = `<div class="fmh">Screenshot to clipboard</div><button data-a="screen">${ic('<rect x="2" y="3" width="14" height="9.500" rx="1.500"/><path d="M6 15.500h6M9 12.500v3"/>')}<span><b>Screen</b><small>Pick a window or tab to capture</small></span></button><button data-a="visible">${ic('<path d="M3 6V4.500A1.500 1.500 0 0 1 4.500 3H6M12 3h1.500A1.500 1.500 0 0 1 15 4.500V6M15 12v1.500a1.500 1.500 0 0 1-1.500 1.500H12M6 15H4.500A1.500 1.500 0 0 1 3 13.500V12"/>')}<span><b>Visible area</b><small>What you can see now</small></span></button><button data-a="full">${ic('<rect x="4.500" y="2" width="9" height="14" rx="1.500"/><path d="M7 5.500h4M7 8.500h4M7 11.500h2"/>')}<span><b>Full page</b><small>Scrolls and stitches the whole page</small></span></button>`;
     } else
     m.innerHTML = `<div class="fmh">Copy to Figma</div>`
@@ -3128,6 +3265,9 @@
     m.addEventListener("click", (e) => {
       const b = e.target.closest("button[data-a]"); if (!b) return; e.stopPropagation();
       const a = b.dataset.a; closeFigMenu();
+      if (a === "m-inspect") return armMotion(true);
+      if (a === "m-record") return startRecording();
+      if (a === "m-gallery") return openGallery();
       if (a === "screen") return shotScreen();
       if (a === "visible") return shotVisible();
       if (a === "full") return fullShot();
@@ -3136,7 +3276,44 @@
       else { finishOpen = false; rp.classList.remove("show"); codeArmed = true; setPicking(true); codeArmed = true; setActive(); say("Click the element to copy as code. \u2191 picks the parent, Esc cancels."); }
     });
   };
-  document.addEventListener("mousedown", (e) => { if (figMenu && !e.composedPath().includes(figMenu) && !e.composedPath().some((n) => n.dataset && (n.dataset.m === "figma" || n.dataset.m === "shot"))) closeFigMenu(); }, true);
+  document.addEventListener("mousedown", (e) => { if (figMenu && !e.composedPath().includes(figMenu) && !e.composedPath().some((n) => n.dataset && (n.dataset.m === "figma" || n.dataset.m === "shot" || n.dataset.m === "motion"))) closeFigMenu(); }, true);
+
+  /* ---------- Motion Recorder: keep every animation that plays, so finished ones can still be copied ---------- */
+  let recTimer = 0, recPoll = 0, recT0 = 0;
+  const recAsk = (type) => new Promise((res) => { try { chrome.runtime.sendMessage({ type }, (x) => res(x && x.ok ? x.data : null)); } catch (e) { res(null); } });
+  const REC_MAX = 30;
+  const drawRec = (data, live) => {
+    const rows = (data && data.rows) || [];
+    const left = Math.max(0, REC_MAX - Math.round((Date.now() - recT0) / 1000));
+    const trigIcon = (t) => ({ hover: "Hover", click: "Click", scroll: "Scroll", key: "Key", focus: "Focus" }[t] || "Auto");
+    lp.innerHTML = `<div class="ph"><b>Motion Recorder</b><span class="scan">${rows.length} animation${rows.length === 1 ? "" : "s"}</span></div>
+      <div class="recbar${live ? " live" : ""}"><span class="recdot"></span><span class="rectxt">${live ? `Recording · hover, click and scroll the page · ${left}s` : `Stopped · ${data && data.kept ? data.kept + " animations kept" : "nothing kept"}`}</span><button class="mini${live ? "" : " pri"}" id="recbtn">${live ? "Stop" : "Record again"}</button></div>
+      ${rows.length ? rows.map((r) => `<div class="recrow" data-rec="${r.id}"><div class="meta"><div class="nm">${esc(r.el)}${r.group ? ` <span class="tag">group</span>` : ""}</div><div class="sub">${esc(r.props.join(", "))} · ${r.dur ? r.dur + "s" : "instant"}</div></div><span class="rtrig">${r.triggers.map(trigIcon).join(" · ")}</span><div class="ra"><button class="mini" data-ri="${r.id}">Inspect</button><button class="mini ico" data-rf="${r.id}" aria-label="Copy to Figma with motion" data-tip="Copy to Figma with motion">${ICONS.figma}</button></div></div>`).join("")
+        : `<div class="empty">${live ? "Waiting for animations.<br>Hover links and cards, click buttons, scroll the page." : "No animations were recorded."}</div>`}
+      <div class="foot2">Recorded animations stay inspectable after they finish, even hover and scroll-in effects. ${data && data.on === false && !rows.length ? "" : ""}</div>`;
+    const elOf = (id) => document.querySelector(`[data-dsx-rec="${id}"]`);
+    lp.querySelector("#recbtn").onclick = () => live ? stopRecording() : startRecording();
+    lp.querySelectorAll("[data-ri]").forEach((b) => b.onclick = () => { const el = elOf(b.dataset.ri); if (!el) return say("That element is no longer on the page."); stopRecording(true); showMotion(el); });
+    lp.querySelectorAll("[data-rf]").forEach((b) => b.onclick = () => { const el = elOf(b.dataset.rf); if (!el) return say("That element is no longer on the page."); copyFigma(el); });
+    lp.querySelectorAll(".recrow").forEach((row) => { row.onmouseenter = () => { const el = elOf(row.dataset.rec); if (!el) return; const r = el.getBoundingClientRect(); Object.assign(hl.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" }); }; row.onmouseleave = () => { hl.style.display = "none"; }; });
+  };
+  const startRecording = async () => {
+    finishOpen = false; rp.classList.remove("show"); closeFigMenu();
+    const st = await recAsk("dsx-rec-start");
+    if (!st) { say("Could not start recording on this page."); return; }
+    mode = "record"; setActive(); lp.classList.add("show"); lp.style.width = "380px"; recT0 = Date.now();
+    if (!st.gsap) say("No GSAP on this page yet: CSS animations are recorded, GSAP ones once it loads.");
+    const tick = async () => { if (mode !== "record") return; drawRec(await recAsk("dsx-rec-list"), true); };
+    clearInterval(recPoll); recPoll = setInterval(tick, 1000); tick();
+    clearTimeout(recTimer); recTimer = setTimeout(() => stopRecording(), REC_MAX * 1000);
+  };
+  const stopRecording = async (quiet) => {
+    clearInterval(recPoll); clearTimeout(recTimer);
+    await recAsk("dsx-rec-stop");
+    if (quiet || mode !== "record") return;
+    const data = await recAsk("dsx-rec-list"); drawRec(data, false);
+    say(data && data.rows && data.rows.length ? `Recorded ${data.rows.length} animation${data.rows.length === 1 ? "" : "s"}. Inspect one to copy its code or send it to Figma.` : "No animations were recorded.");
+  };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && figMenu) closeFigMenu(); }, true);
 
   /* ---------- bar wiring ---------- */
@@ -3148,7 +3325,12 @@
     if (m === "pclose") { stopFind(); if (picking) setPicking(false); finishOpen = false; rp.classList.remove("show"); openMode(null); return; }
     if (m === "shot") { if (figMenuOpen === "shot") return closeFigMenu(); releaseTools("shot"); return openFigMenu(b, "shot"); }
     if (m === "figma") { if (figMenuOpen === "figma") return closeFigMenu(); if (figmaArmed || codeArmed) return setPicking(false); releaseTools("figma"); return openFigMenu(b); }
-    if (m === "motion") { if (mode === "motion") return openMode(null); if (!motionArmed) releaseTools("motion"); return armMotion(!motionArmed); }
+    if (m === "motion") {
+      if (mode === "motion" || mode === "record") { if (mode === "record") stopRecording(true); return openMode(null); }
+      if (motionArmed) return armMotion(false);
+      if (figMenuOpen === "motion") return closeFigMenu();
+      releaseTools("motion"); return openFigMenu(b, "motion");
+    }
     if (m === "revert") return revertWithUndo();
     if (m === "compare") return toggleCompare();
     if (m === "finish") { if (finishOpen) { finishOpen = false; rp.classList.remove("show"); setActive(); } else { setPicking(false); showFinish(); } return; }
@@ -3196,7 +3378,9 @@
     if (!m) return;
     const btn = root.querySelector(`.bar .btn[data-m=${m}]`);
     if (!btn || (m !== "notch" && collapsed) || btn.classList.contains("gone")) return;
-    e.preventDefault(); e.stopPropagation(); btn.click();
+    e.preventDefault(); e.stopPropagation();
+    if (m === "motion") { closeFigMenu(); releaseTools("motion"); return armMotion(!motionArmed); } /* the shortcut goes straight to Inspect */
+    btn.click();
   }, true);
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || picking || activeKey || !mode) return;

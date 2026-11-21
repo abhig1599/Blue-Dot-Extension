@@ -72,3 +72,11 @@ Motion export: when the page uses GSAP (with or without ScrollTrigger), the Figm
 - **Figma copy** starts inside the click, so slow conversions are no longer blocked; the menu explains each option; ↑/↓ in the picker select the parent/child.
 - **Code export** keeps line-height ratios and spaces between words, drops frozen GSAP inline styles.
 - **Fixes:** near-duplicate merge no longer chains distant values, findings behind the panel slide it aside, variable labels update after edits, "No border" instead of a fake stroke colour, rounded values, selected element keeps an outline, restyled find bar and fix card.
+
+## v3.1.0 - Motion Pro
+- **Motion Recorder** (Motion > Record the page): keeps every GSAP and CSS animation that plays while you hover, click and scroll, including ones GSAP deletes after playing; rows fold letters and items into groups; inspect or copy to Figma afterwards.
+- **Component motion:** picking a container exports every animated element inside it with exact keyframes (CSS, JS, React, preview, gallery). Typewriter (`display` steps) supported.
+- **Motion to Figma rebuilt:** GSAP + CSS + recorded animations; layers captured on the most visible frame; dense keyframes relative to it; wrapper frame for animated roots; unique keyframe keys (no more scrambling after 90 keyframes); animated layers named after their element; parent motion applied to children (marquee halves).
+- **Images in Figma copies:** custom image loader (download, then screenshot crop, then placeholder); optional "images from other sites" permission (`permission.html`).
+- **Fixes:** copies no longer hang in background tabs; hidden elements no longer chosen as the capture frame.
+- Verified on madewithgsap.com: every homepage animation exports to code (0 to 0.44 px from the original) and pastes into Figma with playable Motion keyframes.

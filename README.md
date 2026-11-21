@@ -77,8 +77,23 @@ Pick an element and Blue Dot names its animation (fade up, slide + spin, marquee
 - **The GSAP tab rebuilds the original code:** `gsap.from / to / fromTo`, the timeline with each tween's position, the whole staggered group, and a valid `scrollTrigger`.
 - **Scroll is kept:** scrubbed animations become native CSS scroll-driven animations (`animation-timeline`), and play-on-scroll animations start when the element enters the viewport.
 - **How to apply it:** step-by-step instructions under the code for the tab you picked, with install commands and a React / Next.js (`useGSAP`) example.
+- **Component motion:** pick a card, a heading or a whole section and every animated element inside it is exported together (letters of a typewriter, staggered items, images in a scroll gallery), each with its exact keyframes.
+- **Moves with its parent:** pick a child of an animated element (one half of a marquee, an item in a slider) and it gets the parent's motion.
 - **Watch 8s** catches hover and scroll effects that are not running when you click.
 - **Add to gallery** keeps the animation (see Motion gallery below).
+
+### Motion Recorder (PRO)
+GSAP deletes an animation once it has played, so hover effects, click effects and scroll-in reveals normally cannot be read afterwards. Choose **Motion > Record the page**, then hover, click and scroll for up to 30 seconds. Blue Dot keeps every animation that plays (GSAP and CSS), lists it with what triggered it, and folds letter-by-letter and item-by-item animations into one row. Each row can be inspected (code, preview, gallery) or sent straight to Figma, even after it finished.
+
+### Motion to Figma
+Copy an animated element, component or section and paste it into Figma: the layers arrive with Figma Motion keyframes (move, scale, rotate, opacity), ready to play in the Motion timeline.
+
+- Every animation inside the copied element is included: GSAP tweens and timelines, CSS animations, and anything caught by the Recorder.
+- Each animation is paused on its most visible frame while the layers are captured, and the keyframes are written relative to that frame, so nothing starts invisible or squashed.
+- Keyframes are sampled densely and simplified within 0.1 px, so elastic and bounce motion keeps its shape.
+- If the picked element itself moves, it is wrapped in a parent frame (Figma cannot animate a top-level frame).
+- Letter-by-letter animations become per-letter layers; `display`/`visibility` steps become opacity steps.
+- Images from other sites (CDNs) are kept: Blue Dot downloads or screenshots them, and otherwise inserts a placeholder so the layer and its motion survive. Allow "images from other sites" once to always get the real image.
 
 <img width="600" height="auto" alt="image" src="https://github.com/user-attachments/assets/e16dbd90-ea84-4f0e-a553-f45ebecb1036" />
 
@@ -165,7 +180,7 @@ On Mac use Option instead of Alt.
 - Review is an automated subset of WCAG 2.2 AA and common heuristics. It is not a full compliance audit.
 - Flow check reads pages with GET requests only and never clicks or submits. Flows built in JavaScript may be missed.
 - Figma paste uses Figma's undocumented clipboard format and can break after a Figma update. Text keeps the page's fonts, so install them in Figma for a match.
-- Motion: CSS and GSAP are reproduced exactly, but an entrance animation that has already finished (for example on page load) cannot be read. GSAP must be reachable on the page (`window.gsap`). For a staggered group, the CSS, JavaScript and React tabs cover the element you picked; the GSAP tab covers the whole group. Scroll-driven CSS needs Chrome or Edge 115+. Minified JavaScript logic cannot be recovered.
+- Motion: CSS and GSAP are reproduced exactly. An entrance animation that already finished before you opened Blue Dot (on page load) cannot be read; hover, click and scroll animations can be caught with the Recorder. Figma Motion exports move, scale, rotation and opacity; colour, radius and clip-path changes are not exported to Figma (they are in the CSS/JS/React code). Looping animations are exported as one cycle. GSAP must be reachable on the page (`window.gsap`). For a staggered group, the CSS, JavaScript and React tabs cover the element you picked; the GSAP tab covers the whole group. Scroll-driven CSS needs Chrome or Edge 115+. Minified JavaScript logic cannot be recovered.
 - Merging z-index values can change stacking. Check the page afterwards.
 
 ## Credits
