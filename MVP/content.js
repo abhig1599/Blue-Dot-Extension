@@ -12,7 +12,7 @@
   const cache = {};              // mode -> scan result
   let busyN = 0; const busy = (on) => { busyN = Math.max(0, busyN + (on ? 1 : -1)); host.classList.toggle("busy", busyN > 0); };
   const withBusy = async (fn) => { busy(true); try { return await fn(); } finally { setTimeout(() => busy(false), 350); } };
-  let mode = null, picking = false, selected = null, finishOpen = false, figmaArmed = false, motionArmed = false, codeArmed = false;
+  let mode = null, picking = false, selected = null, finishOpen = false, figmaArmed = false, motionArmed = false, codeArmed = false, sectionArmed = false;
 
   /* ---------- helpers ---------- */
   const isUI = (el) => el.id === HOST_ID || (el.closest && el.closest("#" + HOST_ID));
@@ -891,6 +891,7 @@
     .fmenu button b{font:500 12.5px var(--font)}
     .fmenu button small{font:400 11.5px var(--font);color:var(--fg3)}
     .fmenu button:hover small,.fmenu button:focus-visible small{color:rgba(255,255,255,.82)}
+    .fmenu button>span.pro{flex:none;display:inline-block;flex-direction:row;margin-left:6px}
     .fmenu button kbd{font:500 10.5px var(--mono);color:var(--fg3);background:var(--s3);border-radius:4px;padding:1px 5px}
     .fmenu button:hover kbd,.fmenu button:focus-visible kbd{background:rgba(255,255,255,.18);color:#fff}
     /* toast while working */
@@ -1931,9 +1932,20 @@
   const target = (e) => { const cp = e.composedPath(); if (cp.includes(host)) return null; const t = cp[0]; return t && t.nodeType === 1 && !isUI(t) && t !== document.documentElement && t !== document.body ? t : null; };
   /* hovered element, plus how far the user lifted it with the arrow keys */
   let hovBase = null, hovEl = null;
-  const pickVerb = () => figmaArmed ? "Copy for Figma" : motionArmed ? "Inspect motion" : codeArmed ? "Copy as code" : "Inspect";
+  const pickVerb = () => sectionArmed ? "Copy section with motion" : figmaArmed ? "Copy for Figma" : motionArmed ? "Inspect motion" : codeArmed ? "Copy as code" : "Inspect";
+  /* the section an element belongs to: a <section>, <header>, <footer>, or the first wide block around it */
+  const sectionOf = (el) => {
+    let best = el;
+    for (let n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+      const r = n.getBoundingClientRect();
+      if (/^(SECTION|HEADER|FOOTER|ARTICLE|ASIDE|NAV)$/.test(n.tagName) && r.width > innerWidth * 0.5) return n;
+      if (r.width >= innerWidth * 0.7 && r.height >= 120) { best = n; if (n.parentElement && (n.parentElement === document.body || n.parentElement.tagName === "MAIN")) return n; }
+    }
+    return best;
+  };
   const drawHover = () => {
-    const t = hovEl;
+    let t = hovEl;
+    if (t && sectionArmed && t === hovBase) t = hovEl = sectionOf(hovBase);
     if (!t || !picking) { hl.style.display = hlt.style.display = "none"; return; }
     const r = t.getBoundingClientRect();
     Object.assign(hl.style, { display: "block", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
@@ -1960,6 +1972,7 @@
     if (!t) return;
     if (hovEl && hovEl !== t && hovEl.contains(t)) t = hovEl;  /* keep the parent the user lifted to */
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    if (sectionArmed) { const a = hovEl && hovEl.contains(t) ? hovEl : sectionOf(t); setPicking(false); copyFigma(a, { story: true }); return; }
     if (figmaArmed) { const a = t; setPicking(false); copyFigma(a); return; }
     if (motionArmed) { const a = t; setPicking(false); showMotion(a); return; }
     if (codeArmed) { const a = t; setPicking(false); copyCode(a); return; }
@@ -1973,7 +1986,7 @@
     if (on !== picking) busy(on);
     if (!on && /picks the parent/.test(toast.textContent)) toast.classList.remove("show");
     picking = on;
-    if (!on) { hovBase = hovEl = null; hl.style.display = hlt.style.display = "none"; rp.classList.remove("show"); selected = null; figmaArmed = false; motionArmed = false; codeArmed = false; }
+    if (!on) { hovBase = hovEl = null; hl.style.display = hlt.style.display = "none"; rp.classList.remove("show"); selected = null; figmaArmed = false; sectionArmed = false; motionArmed = false; codeArmed = false; }
     document.documentElement.style.cursor = on ? "crosshair" : "";
     setActive();
   };
@@ -2127,6 +2140,11 @@
   };
   [lp, rp].forEach((pn) => { if (!pn) return; new MutationObserver(() => addClose(pn)).observe(pn, { childList: true, subtree: true }); addClose(pn); });
 
+  const armSection = () => {
+    if (mode) openMode(null); finishOpen = false; rp.classList.remove("show");
+    figmaArmed = true; sectionArmed = true; setPicking(true); figmaArmed = true; sectionArmed = true; setActive();
+    say("Click a section to copy it with all its animation. \u2191 picks a bigger part, Esc cancels.");
+  };
   const armFigma = (on) => {
     if (on) { if (mode) openMode(null); finishOpen = false; rp.classList.remove("show"); if (mode) openMode(null); figmaArmed = true; setPicking(true); figmaArmed = true; setActive(); say("Click the element to copy for Figma. \u2191 picks the parent, Esc cancels."); }
     else { figmaArmed = false; setPicking(false); }
@@ -2206,7 +2224,7 @@
     try { await new Promise((r) => chrome.runtime.sendMessage({ type: "dsx-load-figma" }, r)); } catch (e) {}
     return !!globalThis.__dsxFigma;
   };
-  const copyFigma = (el) => withBusy(() => copyFigma0(el));
+  const copyFigma = (el, opt) => withBusy(() => copyFigma0(el, opt || {}));
   /* Images on another domain (CDNs) cannot be downloaded from the page, so the converter used to drop them,
      and their animation with them. Try a normal download, then crop the image from one screenshot of the tab,
      then fall back to a neutral placeholder so the layer and its motion always survive. */
@@ -2254,7 +2272,7 @@
     navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([lastFigma], { type: "text/html" }) })])
       .then(() => say(`Copied again. Press ${PASTE} on the Figma canvas.`)).catch(() => say("The browser blocked the clipboard. Click the page once, then try again."));
   };
-  const copyFigma0 = async (el) => {
+  const copyFigma0 = async (el, opt = {}) => {
     const isPage = el === document.body || el === document.documentElement;
     const what = isPage ? "the page" : selectorOf(el);
     /* Chrome only allows clipboard writes shortly after a click. Converting can take longer than that,
@@ -2270,16 +2288,25 @@
       const ask = (type, ms) => new Promise((res) => { const t = setTimeout(() => res(null), ms); try { chrome.runtime.sendMessage({ type }, (x) => { clearTimeout(t); res(x && x.ok ? x.data : null); }); } catch (e) { clearTimeout(t); res(null); } });
       /* 1. find the motion and pause every animation on its most visible frame */
       let m = null;
-      if (!isPage) { el.setAttribute("data-dsx-root", "1"); m = await ask("dsx-motion-collect", 8000); el.removeAttribute("data-dsx-root"); }
+      if (!isPage) { el.setAttribute("data-dsx-root", opt.story ? "figma-story" : "1"); m = await ask("dsx-motion-collect", 12000); el.removeAttribute("data-dsx-root"); }
       let result;
+      /* a section with no background of its own sits on the page's background: give the copy what you actually see */
+      const bg0 = el.style.backgroundColor, cs0 = getComputedStyle(el);
+      let bgSet = false;
+      if (opt.story && (!toHex(cs0.backgroundColor)) && cs0.backgroundImage === "none") {
+        let a = el.parentElement, c = null; while (a && !c) { const ac = getComputedStyle(a); if (toHex(ac.backgroundColor)) c = ac.backgroundColor; a = a.parentElement; }
+        el.style.backgroundColor = c || "rgb(255, 255, 255)"; bgSet = true;
+      }
       try {
         /* 2. capture the layers on that frame */
         const r = el.getBoundingClientRect();
         const imgLoad = figmaImageLoader(el);
-        const f = globalThis.__dsxFigma.createFigmaConverter({ trace: true, imageLoader: imgLoad });
+        /* sections with motion keep every layer exactly where the page draws it (no auto layout), so pinned and
+           moving parts line up with their keyframes */
+        const f = globalThis.__dsxFigma.createFigmaConverter({ trace: true, imageLoader: imgLoad, layout: opt.story ? "absolute" : "auto" });
         window.__dsxImgStats = imgLoad.stats;
         result = await f.convert({ element: el, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)), name: isPage ? (document.title || location.hostname) : (el.id ? "#" + el.id : selectorOf(el)) });
-      } finally { if (m) await ask("dsx-motion-restore", 3000); /* 3. let the page play again */ }
+      } finally { if (bgSet) el.style.backgroundColor = bg0; if (m) await ask("dsx-motion-restore", 3000); /* 3. let the page play again */ }
       html = result.toClipboardHtml();
       /* 4. write the keyframes onto the layers */
       try { if (m && m.items && m.items.length) { mo = globalThis.__dsxFigma.applyMotion(result, m); html = mo.html; } else if (m && m.notes) host.dataset.motionNote = m.notes.join(" "); }
@@ -2289,10 +2316,12 @@
     if (html) {
       lastFigma = html; window.__dsxLastFigmaHtml = html; window.__dsxLastMotion = mo; host.dataset.figmaLen = String(html.length);
       give(html);
-      let ok = !!writeP;
-      if (writeP) { try { await writeP; } catch (e) { ok = false; } }
-      if (!ok) { try { await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }) })]); ok = true; } catch (e) {} }
-      const anim = mo && mo.withMotion ? ` with ${mo.applied.length} animated layer${mo.applied.length === 1 ? "" : "s"}` : "";
+      /* Chrome can leave a delayed clipboard write pending forever after a long conversion: wait 4 s at most */
+      let ok = false;
+      if (writeP) ok = await Promise.race([writeP.then(() => true, () => false), new Promise((r) => setTimeout(() => r(false), 4000))]);
+      if (!ok && !document.hidden) { try { ok = await Promise.race([navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }) })]).then(() => true, () => false), new Promise((r) => setTimeout(() => r(false), 3000))]); } catch (e) {} }
+      const story = opt.story && m && m.story ? `, ${(m.story.ms / 1000).toFixed(1)}s timeline (scroll played as time)` : "";
+      const anim = mo && mo.withMotion ? ` with ${mo.applied.length} animated layer${mo.applied.length === 1 ? "" : "s"}${story}` : opt.story ? " (no animation found in this section)" : "";
       const ph = window.__dsxImgStats && window.__dsxImgStats.placeholder;
       if (ok && ph && window.__dsxImgStats.needsPermission) say(`Copied ${what}${anim}. ${ph} image${ph === 1 ? " is" : "s are"} from another site and became placeholder${ph === 1 ? "" : "s"}.`, { label: "Allow images", fn: () => { try { chrome.runtime.sendMessage({ type: "dsx-open-permission" }); } catch (e) {} } });
       else if (ok) say(`Copied ${what} as Figma layers${anim}. Press ${PASTE} on the Figma canvas.`, { label: "Copy again", fn: copyFigmaAgain });
@@ -3247,6 +3276,7 @@
     } else
     m.innerHTML = `<div class="fmh">Copy to Figma</div>`
       + `<button data-a="select">${ic('<path d="M3 3h9v5M3 3v9h4"/><path d="m9 9 6.5 2.4-2.9 1.2-1.2 2.9z"/>')}<span><b>An element</b><small>Click any part of the page</small></span><kbd>${MAC ? "\u2325" : "Alt+"}G</kbd></button>`
+      + `<button data-a="section">${ic('<rect x="2.5" y="3" width="13" height="12" rx="2"/><path d="M2.5 7.5h13M6 10.5h6M6 12.5h4"/><path d="M14.5 1.5l1 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5L13 3.5l1.5-.5z" fill="currentColor" stroke="none"/>')}<span><b>A section with its motion</b><small>Scroll and loops become a Figma timeline</small></span><span class="pro">PRO</span></button>`
       + `<button data-a="design">${ic('<rect x="2.500" y="3.500" width="13" height="11" rx="2"/><path d="M2.500 7h13"/>')}<span><b>Whole page</b><small>Every section as editable layers</small></span></button>`
       + `<div class="fmh">Copy as code</div>`
       + `<button data-a="code">${ic('<path d="M6.5 3C5 3 4.5 3.8 4.5 5v1.5C4.5 7.6 3.8 8.5 2.8 9c1 .5 1.7 1.4 1.7 2.5V13c0 1.2.5 2 2 2M11.5 3c1.5 0 2 .8 2 2v1.5c0 1.1.7 2 1.7 2.5-1 .5-1.7 1.4-1.7 2.5V13c0 1.2-.5 2-2 2"/>')}<span><b>An element as code</b><small>React or HTML + CSS</small></span></button>`;
@@ -3273,6 +3303,7 @@
       if (a === "full") return fullShot();
       if (a === "design") { finishOpen = false; rp.classList.remove("show"); copyFigma(document.body); }
       else if (a === "select") armFigma(true);
+      else if (a === "section") armSection();
       else { finishOpen = false; rp.classList.remove("show"); codeArmed = true; setPicking(true); codeArmed = true; setActive(); say("Click the element to copy as code. \u2191 picks the parent, Esc cancels."); }
     });
   };
@@ -3312,6 +3343,7 @@
     await recAsk("dsx-rec-stop");
     if (quiet || mode !== "record") return;
     const data = await recAsk("dsx-rec-list"); drawRec(data, false);
+    recAsk("dsx-rec-start"); /* keep remembering in the background */
     say(data && data.rows && data.rows.length ? `Recorded ${data.rows.length} animation${data.rows.length === 1 ? "" : "s"}. Inspect one to copy its code or send it to Figma.` : "No animations were recorded.");
   };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && figMenu) closeFigMenu(); }, true);
@@ -3457,9 +3489,12 @@
 
   host.classList.add("away");
   setTimeout(() => setCollapsed(false), 160);
+  /* remember every animation that plays while Blue Dot is open, so a section you already scrolled past still copies */
+  setTimeout(() => { try { chrome.runtime.sendMessage({ type: "dsx-rec-start" }, () => void chrome.runtime.lastError); } catch (e) {} }, 300);
   const destroy = () => {
     // closing keeps nothing: edits are temporary
     revertAll(); setPicking(false);
+    try { chrome.runtime.sendMessage({ type: "dsx-rec-stop" }, () => void chrome.runtime.lastError); } catch (e) {}
     document.removeEventListener("mousemove", onMove, true);
     document.removeEventListener("click", onClick, true);
     window.removeEventListener('scroll', reflow, true); window.removeEventListener('resize', reflow); host.remove(); sheet.remove(); delete window.__dsx;

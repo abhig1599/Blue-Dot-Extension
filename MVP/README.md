@@ -80,3 +80,11 @@ Motion export: when the page uses GSAP (with or without ScrollTrigger), the Figm
 - **Images in Figma copies:** custom image loader (download, then screenshot crop, then placeholder); optional "images from other sites" permission (`permission.html`).
 - **Fixes:** copies no longer hang in background tabs; hidden elements no longer chosen as the capture frame.
 - Verified on madewithgsap.com: every homepage animation exports to code (0 to 0.44 px from the original) and pastes into Figma with playable Motion keyframes.
+
+## v3.2.0 - Copy a section with its motion
+- Figma menu › **A section with its motion**: the picker selects the whole section; the copy becomes a scroll story in Figma (viewport frame, section slides up as scrolling, scroll animations placed at their scroll position, scrubbed ones stretched to their scroll distance, pins held in place, loops repeated).
+- Every ScrollTrigger is paused (pins kept) while the layers are captured, and the page is scrolled to the position that matches the capture frame, so nothing moves during conversion. Scroll position and triggers are restored afterwards.
+- Absolute layout for section copies (no auto layout) so layers line up with their keyframes; transparent sections get the background visible behind them.
+- Blue Dot remembers every animation that plays while it is open (the Recorder runs quietly in the background).
+- Clipboard writes that stall after long conversions fall back to a "Copy now" button; PRO badge layout fixed.
+- Verified on madewithgsap.com's pinned scroll gallery: predicted on-screen positions match the live page within 0.3 px along the scrubbed timeline. Effects that react to scroll speed (created by scripts on the fly) are not part of a fixed timeline and are not exported.

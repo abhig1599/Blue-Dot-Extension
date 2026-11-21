@@ -131,6 +131,11 @@ function dsxMotionCollect() {
   const out = { items: [], notes: [], libs: [] };
   if (!root) return out;
   const codeMode = root.getAttribute("data-dsx-root") === "code"; /* code mode: absolute frames for CSS/JS, nothing is held */
+  /* story mode (copy a section to Figma): scroll becomes time, as if someone scrolled through the section */
+  const storyMode = root.getAttribute("data-dsx-root") === "figma-story";
+  const PX_MS = 1; /* 1000 px of scrolling = 1 second in Figma */
+  /* capture a section from a fixed scroll position: its top at the top of the window, so pinned content sits in place */
+  const savedScroll = { x: scrollX, y: scrollY };
   const g = window.gsap;
   if (g) out.libs.push("gsap " + (g.version || ""));
   let alias = null; /* an animated parent whose motion is applied to the picked element (it moves with it) */
@@ -163,8 +168,10 @@ function dsxMotionCollect() {
       if (!drivers.has(A)) {
         const saved = A.totalTime(), wasPaused = A.paused(), st = A.scrollTrigger || (A.vars && A.vars.scrollTrigger);
         const stv = st && (st.vars || st);
+        const stInst = A.scrollTrigger && typeof A.scrollTrigger.start === "number" ? A.scrollTrigger : null;
         drivers.set(A, { kind: "gsap", cycleMs: cyc(A) * 1000, els: new Set(), scrub: !!(stv && stv.scrub), loop: (A.repeat ? A.repeat() : 0) === -1, delayMs: (A.delay ? A.delay() : 0) * 1000,
           st: stv ? { start: typeof stv.start === "string" ? stv.start : undefined, end: typeof stv.end === "string" ? stv.end : undefined, scrub: stv.scrub } : null,
+          stPx: stInst ? { start: stInst.start, end: stInst.end } : null,
           set: (ms) => { A.pause(); A.totalTime(ms / 1000, true); },
           restore: () => { try { A.totalTime(saved, true); if (!wasPaused) A.resume(); } catch (e) {} } });
       }
@@ -195,6 +202,26 @@ function dsxMotionCollect() {
   }
   if (!drivers.size) { out.notes.push("No animation found on this element, inside it or on its parents. Hover and scroll effects can be caught with Motion > Record the page."); return out; }
 
+  /* story timing: when each animation starts and how long it lasts once scroll becomes time */
+  let storyMs = 0;
+  if (storyMode) {
+    const secTop = root.getBoundingClientRect().top + scrollY, s0 = secTop - innerHeight, sEnd = secTop + root.offsetHeight;
+    for (const [, D] of drivers) {
+      if (D.stPx) { D.offset = Math.max(0, (D.stPx.start - s0) * PX_MS); D.span = D.scrub ? Math.max(300, (D.stPx.end - D.stPx.start) * PX_MS) : D.cycleMs; }
+      else { D.offset = 0; D.span = D.cycleMs; }
+      if (!D.loop) storyMs = Math.max(storyMs, D.offset + D.span);
+    }
+    storyMs = Math.min(60000, Math.max(storyMs, Math.min(20000, (sEnd - s0) * PX_MS * 0.5), ...[...drivers.values()].map((D) => D.loop ? D.cycleMs : 0)));
+    out.story = { ms: Math.round(storyMs), pxPerSecond: 1000 / PX_MS };
+  }
+  /* move a track to its place on the section timeline: scrubbed ones stretch to their scroll distance, loops repeat */
+  const toStory = (pts, D) => {
+    if (!storyMode) return pts;
+    let res = pts.map(([t, v]) => [D.offset + t * (D.span / (D.cycleMs || 1)), v]);
+    if (D.loop && D.span > 0) { const one = res.slice(); for (let k = 1; D.offset + k * D.span < storyMs && res.length < 2000; k++) one.forEach(([t, v], i) => { if (i > 0 || k === 0) res.push([t + k * D.span, v]); }); }
+    if (res.length && res[0][0] > 0) res.unshift([0, res[0][1]]); /* hold the first value until it starts */
+    return res.filter(([t]) => t <= storyMs + 1);
+  };
   /* read what the element looks like right now: translation, scale, rotation and opacity */
   const probeBox = document.createElement("div"); probeBox.style.cssText = "position:absolute;left:-99999px;top:0;visibility:hidden;pointer-events:none"; document.documentElement.appendChild(probeBox);
   const read = (el) => {
@@ -244,7 +271,7 @@ function dsxMotionCollect() {
     /* the most visible frame: big, upright and opaque. The Figma layers are captured there. */
     let best = 0, bestScore = -1e9;
     frames.forEach((f, i) => { const sc = f.reduce((a, s) => a + (s.vis ? Math.min(Math.abs(s.sx), 1) + Math.min(Math.abs(s.sy), 1) + s.op * 0.6 + 2 : 0) - Math.min(Math.abs(s.rot), 180) / 90, 0); /* hidden elements are not converted, so they count for nothing */ if (sc > bestScore + 1e-6) { bestScore = sc; best = i; } });
-    D.set(D.cycleMs * best / N); hold.push(D);
+    D.set(D.cycleMs * best / N); D.bestMs = D.cycleMs * best / N; hold.push(D);
     els.forEach((el, j) => {
       const B = frames[best][j], tr = { tx: [], ty: [], sx: [], sy: [], rot: [], op: [] };
       let lastR = B.rot;
@@ -262,19 +289,68 @@ function dsxMotionCollect() {
         return keep.map((n) => [pts[n][0], +pts[n][1].toFixed(4)]);
       };
       const props = {};
-      for (const k of Object.keys(tr)) { const v = tr[k].map((x) => x[1]); if (Math.max(...v) - Math.min(...v) > TOL[k]) props[k] = simplify(tr[k], TOL[k]); }
+      for (const k of Object.keys(tr)) { const v = tr[k].map((x) => x[1]); if (Math.max(...v) - Math.min(...v) > TOL[k]) props[k] = toStory(simplify(tr[k], TOL[k]), D); }
       if (!Object.keys(props).length) return;
       const cls = typeof el.className === "string" && el.className.trim() ? "." + el.className.trim().split(/\s+/).slice(0, 2).join(".") : "";
-      out.items.push({ path: pathOf(el), cls: el.tagName.toLowerCase() + cls, totalMs: Math.round(D.cycleMs), scrub: !!D.scrub, kind: D.kind, props,
+      out.items.push({ path: pathOf(el), cls: el.tagName.toLowerCase() + cls, totalMs: Math.round(storyMode ? storyMs : D.cycleMs), startMs: storyMode ? Math.round(D.offset) : 0, scrub: !!D.scrub, loop: !!D.loop, kind: D.kind, props,
         w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height, origin: getComputedStyle(el).transformOrigin });
     });
   }
   probeBox.remove();
   if (codeMode) return out;
+  if (storyMode) {
+    /* simulate scrolling in Figma: the copy sits in a viewport-sized frame, the section slides up as the page would
+       scroll, and pinned parts move the opposite way while pinned, so they stay put on screen */
+    const secTop = root.getBoundingClientRect().top + scrollY, s0 = secTop - innerHeight;
+    out.story.viewport = { w: innerWidth, h: innerHeight };
+    out.story.s0 = s0;
+    /* ScrollTrigger re-syncs scrubbed animations to the scroll position while the layers are converted.
+       Scroll to the exact position where its progress equals the capture frame, so both agree (and pins sit right). */
+    const sd = hold.find((D) => D.scrub && D.stPx);
+    const target = sd ? sd.stPx.start + (sd.bestMs / (sd.cycleMs || 1)) * (sd.stPx.end - sd.stPx.start) : root.getBoundingClientRect().top + scrollY;
+    window.scrollTo(savedScroll.x, Math.max(0, Math.round(target)));
+    try { if (window.ScrollTrigger) window.ScrollTrigger.update(); } catch (e) {}
+    const cap = scrollY, T = storyMs, stepN = 120, scrollAt = (t) => s0 + t / PX_MS;
+    out.story.rootY = Math.round(root.getBoundingClientRect().top); /* where the section sits in the window at capture */
+    out.story.rootX = Math.round(root.getBoundingClientRect().left);
+    const ts = []; for (let i = 0; i <= stepN; i++) ts.push(T * i / stepN);
+    out.items.push({ path: ":frame", cls: "scroll", totalMs: Math.round(T), props: { ty: ts.map((t) => [t, +(cap - scrollAt(t)).toFixed(2)]) } });
+    /* pinned elements: while pinned they move down with the scroll, relative to the section */
+    try {
+      const ST = window.ScrollTrigger;
+      (ST ? ST.getAll() : []).forEach((t) => {
+        const pe = t.pin; if (!pe || pe.nodeType !== 1 || !(pe === root || root.contains(pe))) return;
+        const L = t.end - t.start, off = (y) => Math.max(0, Math.min(L, y - t.start));
+        const path = pathOf(pe); if (path == null) return;
+        const track = ts.map((tt) => [tt, +(off(scrollAt(tt)) - off(cap)).toFixed(2)]);
+        const it = out.items.find((x) => x.path === path);
+        if (it) { /* add to the element's own movement */
+          const own = it.props.ty || [[0, 0], [T, 0]];
+          const at = (pts, x) => { if (x <= pts[0][0]) return pts[0][1]; for (let k = 1; k < pts.length; k++) if (x <= pts[k][0]) { const u = (x - pts[k - 1][0]) / (pts[k][0] - pts[k - 1][0] || 1); return pts[k - 1][1] + u * (pts[k][1] - pts[k - 1][1]); } return pts[pts.length - 1][1]; };
+          const times = [...new Set([...own.map((q) => q[0]), ...track.map((q) => q[0])])].sort((a, b) => a - b);
+          it.props.ty = times.map((x) => [x, +(at(own, x) + at(track, x)).toFixed(2)]);
+          if (!it.props.tx) it.props.tx = [[0, 0], [T, 0]];
+        } else out.items.push({ path, cls: "pinned", totalMs: Math.round(T), props: { tx: [[0, 0], [T, 0]], ty: track } });
+        out.notes.push("Pinned while scrolling: " + (pe.className && typeof pe.className === "string" ? pe.className.split(" ")[0] : pe.tagName.toLowerCase()) + ".");
+      });
+    } catch (e) {}
+  }
+  /* while the layers are converted nothing may move the paused frames: switch every ScrollTrigger off, keeping pins
+     where they are (disable(false)), and switch them back on in dsxMotionRestore */
+  const offST = [];
+  try { const ST = window.ScrollTrigger; if (ST && ST.getAll) ST.getAll().forEach((t) => { if (t.enabled !== false && t.isActive !== undefined) { t.disable(false); offST.push(t); } }); } catch (e) {}
+  window.__dsxMotionST = offST;
+  hold.forEach((D) => { if (D.bestMs != null) D.set(D.bestMs); }); /* put every animation back on its capture frame */
   window.__dsxMotionHold = hold; // kept on the capture frame until dsxMotionRestore
+  window.__dsxMotionScroll = storyMode ? savedScroll : null;
   return out;
 }
-function dsxMotionRestore() { const h = window.__dsxMotionHold || []; h.forEach((D) => D.restore()); window.__dsxMotionHold = null; return h.length; }
+function dsxMotionRestore() {
+  (window.__dsxMotionST || []).forEach((t) => { try { t.enable(false); } catch (e) {} }); window.__dsxMotionST = null;
+  const h = window.__dsxMotionHold || []; h.forEach((D) => D.restore()); window.__dsxMotionHold = null;
+  const sc = window.__dsxMotionScroll; if (sc) { window.scrollTo(sc.x, sc.y); try { window.ScrollTrigger && window.ScrollTrigger.update(); } catch (e) {} window.__dsxMotionScroll = null; }
+  return h.length;
+}
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || (msg.type !== "dsx-motion-collect" && msg.type !== "dsx-motion-restore") || !sender.tab) return;
   chrome.scripting.executeScript({ target: { tabId: sender.tab.id }, world: "MAIN", func: msg.type === "dsx-motion-collect" ? dsxMotionCollect : dsxMotionRestore })

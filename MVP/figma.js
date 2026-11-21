@@ -16,11 +16,15 @@ const m=(_,b,T,g,x)=>{let S={sessionID:0,localID:i++};a.push({guid:S,phase:"CREA
  _.parameterConsumptionMap=_.parameterConsumptionMap||{entries:[]},_.parameterConsumptionMap.entries.push(R),d=!0};
 const c=(_,b)=>{let T=[...new Set([..._.map(x=>x[0]),...b.map(x=>x[0])])].sort((x,S)=>x-S),g=(x,S)=>{if(S<=x[0][0])return x[0][1];for(let w=1;w<x.length;w++)if(S<=x[w][0]){let R=(S-x[w-1][0])/(x[w][0]-x[w-1][0]||1);return x[w-1][1]+R*(x[w][1]-x[w-1][1])}return x[x.length-1][1]};return T.map(x=>[x,g(_,x),g(b,x)])};
 const cv=a.find(x=>x.type==="CANVAS"),top=cv&&a.find(x=>x.type==="FRAME"&&x.parentIndex&&same(x.parentIndex.guid,cv.guid));
-let rootNode=null,wrapped=!1;
-const getRoot=()=>{if(rootNode)return rootNode;const g=r.get(":scope"),nd=g&&y(g);if(nd&&nd!==top)return rootNode=nd;if(!top)return null;
+let rootNode=null,wrapped=!1,viewWrapped=!1;
+/* section with scroll: a viewport-sized frame that clips like a browser window; the section slides inside it */
+const SV=e.story&&e.story.viewport;
+if(SV&&top){const VW={guid:{sessionID:0,localID:i++},phase:"CREATED",parentIndex:top.parentIndex,type:"FRAME",name:(top.name||"Section")+" · scroll view",visible:!0,opacity:1,blendMode:"PASS_THROUGH",size:{x:Math.round(SV.w),y:Math.round(SV.h)},transform:Object.assign({},top.transform||Xx),fillPaints:top.fillPaints||[],strokeWeight:0,strokePaints:[],frameMaskDisabled:!1,stackMode:"NONE"};
+ top.parentIndex={guid:VW.guid,position:"!"};top.transform=Object.assign({},Xx,{m02:e.story.rootX||0,m12:e.story.rootY||0});a.splice(a.indexOf(top),0,VW);viewWrapped=!0}
+const getRoot=()=>{if(rootNode)return rootNode;const g=r.get(":scope"),nd=g&&y(g);if(nd&&nd!==top)return rootNode=nd;if(!top)return null;if(viewWrapped)return rootNode=top;
  const W={guid:{sessionID:0,localID:i++},phase:"CREATED",parentIndex:top.parentIndex,type:"FRAME",name:(top.name||"Frame")+" · motion",visible:!0,opacity:1,blendMode:"PASS_THROUGH",size:top.size,transform:top.transform,fillPaints:[],strokeWeight:0,strokePaints:[],frameMaskDisabled:!0,stackMode:"NONE"};
  top.parentIndex={guid:W.guid,position:"!"};top.transform=Object.assign({},Xx);a.splice(a.indexOf(top),0,W);wrapped=!0;return rootNode=top};
-for(let _ of e.items||[]){let b=_.cls||_.path,g=_.path===":scope"?getRoot():(r.get(_.path)&&y(r.get(_.path)));
+for(let _ of e.items||[]){let b=_.cls||_.path,g=_.path===":frame"?top:_.path===":scope"?getRoot():(r.get(_.path)&&y(r.get(_.path)));
  if(!g){p.push(b+": no matching Figma layer (images from other sites and canvas are not converted)");continue}
  if(/^(Container|Frame|Group|Div|Span)$/i.test(g.name||"")){let nm=(_.cls||"").replace(/^[a-z0-9-]+\.?/i,"").split(".")[0];if(nm)g.name=nm}
  let x=_.props||{},S=[],end=[[0,0],[_.totalMs,0]];
@@ -30,4 +34,4 @@ for(let _ of e.items||[]){let b=_.cls||_.path,g=_.path===":scope"?getRoot():(r.g
  x.op&&(m(g,"OPACITY",!1,x.op.map(w=>[w[0],w[1]*100]),x.op[0][1]*100),S.push("opacity"));
  S.length&&l.push(b+": "+S.join(", ")+" ("+_.totalMs+"ms"+(_.scrub?", scroll-scrubbed in the original":"")+")")}
 d&&a.push({guid:s,phase:"CREATED",parentIndex:{guid:{sessionID:0,localID:0},position:'"'},type:"CANVAS",name:"Internal Only Canvas",visible:!1,opacity:1,transform:Xx,backgroundOpacity:1,backgroundEnabled:!0,internalOnly:!0});
-let u=br(t.document,d?Yx():void 0);return{html:On(u.base64),applied:l,skipped:p,withMotion:d,wrapped}}globalThis.__dsxFigma={createFigmaConverter:bm,applyMotion:qx,toClipboardItem:hr};})();
+let u=br(t.document,d?Yx():void 0);return{html:On(u.base64),applied:l,skipped:p,withMotion:d,wrapped,viewWrapped}}globalThis.__dsxFigma={createFigmaConverter:bm,applyMotion:qx,toClipboardItem:hr};})();

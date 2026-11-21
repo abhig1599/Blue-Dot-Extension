@@ -88,6 +88,15 @@ GSAP deletes an animation once it has played, so hover effects, click effects an
 ### Motion to Figma
 Copy an animated element, component or section and paste it into Figma: the layers arrive with Figma Motion keyframes (move, scale, rotate, opacity), ready to play in the Motion timeline.
 
+**A section with its motion (PRO).** Figma menu › *A section with its motion*, then click anywhere in a section. Blue Dot copies the whole section design and turns its scroll experience into a Figma timeline:
+
+- The copy sits in a frame the size of your browser window, and the section slides up inside it as if someone were scrolling (1,000 px of scroll = 1 second).
+- Every scroll animation starts at the moment its scroll position is reached; scrubbed ones last as long as their scroll distance.
+- Pinned parts stay put on screen while pinned, exactly like on the site.
+- Loops (marquees, spinners) repeat for the whole section timeline.
+- The section keeps the background you see behind it, and every layer sits exactly where the page draws it.
+- Animations that already played while Blue Dot was open are remembered and included.
+
 - Every animation inside the copied element is included: GSAP tweens and timelines, CSS animations, and anything caught by the Recorder.
 - Each animation is paused on its most visible frame while the layers are captured, and the keyframes are written relative to that frame, so nothing starts invisible or squashed.
 - Keyframes are sampled densely and simplified within 0.1 px, so elastic and bounce motion keeps its shape.
