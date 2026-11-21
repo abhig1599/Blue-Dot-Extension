@@ -2376,7 +2376,7 @@
       }
       flush();
     };
-    if (root && root.nodeType === 1) walk(root);
+    if (root && root.nodeType === 1) { try { walk(root); } catch (e) { for (const r of restores) r(); throw e; } }
     return () => { for (const r of restores) r(); };
   };
   const copyFigma = (el, opt) => withBusy(() => copyFigma0(el, opt || {}));
@@ -2394,8 +2394,33 @@
       catch (e) { return null; } finally { host.style.visibility = prev; }
     })());
     const toBytes = async (canvas) => { const b = await new Promise((r) => canvas.toBlob(r, "image/png")); return { bytes: await b.arrayBuffer(), mimeType: "image/png" }; };
+    /* Videos paste as a still of the current frame. The element itself is unchanged, so its domPath and motion
+       keyframes still export; Figma receives an image fill, never a playable video. */
+    const videoStill = async (v) => {
+      const rr0 = v.getBoundingClientRect();
+      try {
+        if (v.readyState >= 2 && v.videoWidth > 1 && v.videoHeight > 1) {
+          const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
+          c.getContext("2d").drawImage(v, 0, 0);
+          const b = await new Promise((r) => c.toBlob(r, "image/png"));
+          if (b && b.size) { stats.fetched++; return { bytes: await b.arrayBuffer(), mimeType: "image/png" }; }
+        }
+      } catch (e) {} /* cross-origin video without CORS taints the canvas: fall through to the tab crop */
+      if (rr0.width > 2 && rr0.height > 2 && rr0.bottom > 0 && rr0.right > 0 && rr0.top < innerHeight && rr0.left < innerWidth) {
+        const sh = await grab();
+        if (sh) {
+          const k = sh.width / innerWidth, sx = Math.max(0, rr0.left * k), sy = Math.max(0, rr0.top * k), sw = Math.min(sh.width - sx, rr0.width * k), shh = Math.min(sh.height - sy, rr0.height * k);
+          if (sw > 1 && shh > 1) { const c = document.createElement("canvas"); c.width = Math.round(sw); c.height = Math.round(shh); c.getContext("2d").drawImage(sh, sx, sy, sw, shh, 0, 0, c.width, c.height); stats.cropped++; return toBytes(c); }
+        }
+      }
+      const w = Math.max(8, Math.min(1600, Math.round(v.videoWidth || rr0.width || 200))), h = Math.max(8, Math.min(1600, Math.round(v.videoHeight || rr0.height || 150)));
+      const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d");
+      g.fillStyle = "#e4e4e7"; g.fillRect(0, 0, w, h);
+      stats.placeholder++; return toBytes(c);
+    };
     const findImg = (src) => [...(root.querySelectorAll ? root.querySelectorAll("img") : []), ...(root.tagName === "IMG" ? [root] : [])].find((i) => i.currentSrc === src || i.src === src);
-    const loader = async ({ src }) => {
+    const loader = async ({ src, element }) => {
+      if (element && element.tagName === "VIDEO") return videoStill(element);
       try { const r = await fetch(src, { credentials: "omit" }); if (r.ok) { const b = await r.blob(); if (b.size) { stats.fetched++; return { bytes: await b.arrayBuffer(), mimeType: b.type || "image/png" }; } } } catch (e) {}
       /* the extension itself can download it when the optional "images from other sites" permission is on */
       try {
