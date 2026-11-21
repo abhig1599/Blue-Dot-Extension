@@ -71,7 +71,15 @@ function dsxProbe() {
             let tlId = null;
             if (par) { if (!tls.has(top)) tls.set(top, { id: tls.size, duration: top.duration(), repeat: top.repeat(), yoyo: top.yoyo(), repeatDelay: top.repeatDelay(), delay: top.delay(), st: stInfo(top.scrollTrigger), children: (top.getChildren ? top.getChildren(true, true, false).length : 0) }); tlId = tls.get(top).id; }
             const v = safe(t.vars, 0) || {}; delete v.parent; delete v.scrollTrigger;
-            out.gsap.push({ on: depth === 0 ? "this element" : "ancestor " + depth, depth, duration: t.duration(), delay: t.delay(), vars: v, tag, count: targets.length, pos: par ? +t.startTime().toFixed(4) : 0, tl: tlId, st: par ? null : stInfo(t.scrollTrigger) });
+            let rt = {}; try {
+              /* playable = plays now, already played, scrub-driven, or scheduled under running ancestors.
+                 a tween parked under a paused or finished timeline (pre-registered hover/drag states) never plays at rest */
+              let scheduled = !t.paused(), stInChain = false, x = t.parent;
+              while (x && x !== root) { if (x.scrollTrigger) stInChain = true; if (x.paused() || x.totalTime() >= x.duration() - 0.001) scheduled = false; x = x.parent; }
+              if (t.scrollTrigger) stInChain = true;
+              rt = { prog: +t.progress().toFixed(4), paused: !!t.paused(), active: !!t.isActive(), playable: !!(t.isActive() || t.progress() > 0 || stInChain || scheduled) };
+            } catch (e) {}
+            out.gsap.push({ on: depth === 0 ? "this element" : "ancestor " + depth, depth, duration: t.duration(), delay: t.delay(), vars: v, tag, count: targets.length, pos: par ? +t.startTime().toFixed(4) : 0, tl: tlId, st: par ? null : stInfo(t.scrollTrigger), rt });
             ti++;
           }
           node = node.parentElement; depth++;
@@ -81,6 +89,12 @@ function dsxProbe() {
         const liveOwn = G.getTweensOf(el);
         /* remembered tweens count only if they are not live already (each tween once) */
         const own = liveOwn.concat((w.__dsxRecorded || []).flatMap((x) => (x.getChildren ? x.getChildren(true, true, false) : [x])).filter((t) => { try { return !liveOwn.includes(t) && t.targets && t.targets().includes(el); } catch (e) { return false; } }).filter((t, i, arr) => arr.indexOf(t) === i));
+        if (own.length) {
+          /* prefer a tween that actually plays: an idle interaction tween (never started, parked timeline) is not the element's design motion */
+          const playable = (t) => { try { if (t.isActive() || t.progress() > 0) return true; if (t.scrollTrigger) return true; let x = t.parent; while (x && x !== root) { if (x.scrollTrigger) return true; if (x.paused() || x.totalTime() >= x.duration() - 0.001) return false; x = x.parent; } return !t.paused(); } catch (e) { return true; } };
+          const ownPlayable = own.filter(playable);
+          if (!ownPlayable.length) own.length = 0; else own.splice(0, own.length, ...ownPlayable);
+        }
         if (own.length) {
           const A = topOf(own[0]), d = A.duration(), rd = A.repeatDelay ? A.repeatDelay() || 0 : 0, yo = A.yoyo ? A.yoyo() : false, rep = A.repeat ? A.repeat() : 0;
           const cyc = rep !== 0 ? (yo ? 2 * (d + rd) : d + rd) : d;
@@ -163,6 +177,14 @@ function dsxMotionCollect() {
     for (const t of tweens) {
       let tg = []; try { tg = t.targets ? t.targets().filter(inRoot) : []; } catch (e) {}
       if (!tg.length) continue;
+      /* skip animations parked under a paused or finished timeline: pre-registered hover/drag states never play at rest,
+         and driving them would invert the design (hide what is shown, show what is hidden). ScrollTrigger-driven and
+         already-played tweens stay. */
+      try {
+        let parked = t.paused(), scrubbed = !!t.scrollTrigger, x = t.parent;
+        while (x && x !== g.globalTimeline) { if (x.scrollTrigger) scrubbed = true; if (x.paused() || x.totalTime() >= x.duration() - 0.001) parked = true; x = x.parent; }
+        if (!scrubbed && parked && !t.isActive() && !(t.progress() > 0)) continue;
+      } catch (e) {}
       let A = topOf(t);
       const cyc = (x) => { const d = x.duration(), rep = x.repeat ? x.repeat() : 0, rd = x.repeatDelay ? x.repeatDelay() || 0 : 0; return rep !== 0 ? (x.yoyo && x.yoyo() ? 2 * (d + rd) : d + rd) : d; };
       if (!(cyc(A) > 0) || cyc(A) > 600) A = t; // endless container: drive the tween on its own

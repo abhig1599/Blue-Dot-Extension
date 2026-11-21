@@ -2621,7 +2621,9 @@
   const gsapEffect = (probe, el) => {
     const list = (probe && probe.gsap) || []; if (!list.length) return null;
     const has = (g) => { const v = g.vars || {}; return Object.keys(gsapProps(v)).length || TKEYS.some((k) => v[k] != null); };
-    const pick = list.find((g) => g.on === "this element" && has(g)) || list.find(has);
+    /* ignore tweens that never played and never will (pre-registered hover/drag interaction states): exporting them inverts the resting design */
+    const played = (g) => { const r = g && g.rt; if (!r || r.playable == null) return true; /* older probe without runtime state: keep prior behavior */ return !!r.playable; };
+    const pick = list.find((g) => g.on === "this element" && has(g) && played(g)) || list.find((g) => has(g) && played(g));
     if (!pick) return null;
     const v = pick.vars || {}, back = !!v.runBackwards, sa = v.startAt || null;
     const other = gsapProps(v); delete other.transform;
@@ -3283,7 +3285,7 @@
       const st0 = n.getAttribute && n.getAttribute("style");
       if (st0 && /translate:\s*none;\s*rotate:\s*none;\s*scale:\s*none/.test(st0)) {
         /* GSAP's signature: these values are a frozen animation frame, not the design */
-        ["translate", "rotate", "scale", "transform", "opacity", "visibility", "will-change"].forEach((pn) => n.style.removeProperty(pn));
+        ["translate", "rotate", "scale", "transform", "will-change"].forEach((pn) => n.style.removeProperty(pn)); /* opacity/visibility stay: autoAlpha end states (e.g. hidden until interaction) are the design, not a frozen frame */
         if (!n.getAttribute("style").trim()) n.removeAttribute("style");
       }
       [...n.attributes].forEach((a) => { if (/^data-dsx/.test(a.name) || /^on/i.test(a.name)) n.removeAttribute(a.name); });
