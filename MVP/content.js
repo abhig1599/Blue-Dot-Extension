@@ -2334,6 +2334,51 @@
     try { await new Promise((r) => chrome.runtime.sendMessage({ type: "dsx-load-figma" }, r)); } catch (e) {}
     return !!globalThis.__dsxFigma;
   };
+  /* Split-word effects (GSAP SplitText and friends) wrap every word in its own inline element. Exported one
+     Figma layer per word, the boxes are pixel-exact only while Figma has the page's font: a substituted font's
+     wider glyphs overflow the exact boxes and neighbouring words touch. Words at rest (identity transform,
+     matching style, no exported motion) are joined back into one element with the original whitespace for the
+     capture, so the line reads correctly in any font. The page is restored right after the capture; words that
+     are mid-animation or carry exported keyframes keep their own layers. */
+  const IDENTITY_M = /^matrix\(1, 0, 0, 1, 0, 0\)$/;
+  const mergeRestingWords = (root, motionPaths) => {
+    const restores = [];
+    const pathOf = (el) => { const chain = []; let n = el; while (n && n !== root) { chain.unshift(n); n = n.parentElement; } if (n !== root) return null; let p = ":scope"; for (const c of chain) p += " > " + c.tagName.toLowerCase() + ":nth-child(" + ([...c.parentElement.children].indexOf(c) + 1) + ")"; return p; };
+    const textOnly = (el) => [...el.children].every((c) => /^(I|B|EM|STRONG|SPAN|U|SMALL|SUB|SUP|ABBR|CODE|MARK)$/.test(c.tagName) && c.children.length === 0);
+    const isWord = (el) => {
+      if (!(el.textContent || "").trim() || !textOnly(el)) return false;
+      const s = getComputedStyle(el);
+      return s.position === "static" && s.float === "none" && (s.transform === "none" || IDENTITY_M.test(s.transform)) && s.translate === "none" && (s.display === "inline" || s.display === "inline-block") && s.visibility === "visible" && parseFloat(s.opacity) >= 1;
+    };
+    const keyOf = (el) => { const s = getComputedStyle(el); return [s.fontFamily, s.fontSize, s.fontWeight, s.fontStyle, s.letterSpacing, s.textTransform, s.color, s.display].join("|"); };
+    const walk = (el) => {
+      for (const kid of [...el.children]) walk(kid);
+      let run = [];
+      const flush = () => {
+        const words = run.filter((n) => n.nodeType === 1);
+        if (words.length >= 2 && words.every((w) => keyOf(w) === keyOf(words[0]) && !motionPaths.has(pathOf(w)))) {
+          const parent = words[0].parentNode;
+          let text = "";
+          for (const n of run) text += n.textContent;
+          const rep = document.createElement(words[0].tagName.toLowerCase());
+          rep.className = words[0].className;
+          rep.textContent = text.replace(/\s+/g, " ");
+          parent.insertBefore(rep, run[0]);
+          for (const n of run) parent.removeChild(n);
+          restores.push(() => { for (const n of run) parent.insertBefore(n, rep); parent.removeChild(rep); });
+        }
+        run = [];
+      };
+      for (const n of [...el.childNodes]) {
+        if (n.nodeType === 1 && isWord(n)) run.push(n);
+        else if (n.nodeType === 3 && run.length && !(n.textContent || "").trim()) run.push(n);
+        else flush();
+      }
+      flush();
+    };
+    if (root && root.nodeType === 1) walk(root);
+    return () => { for (const r of restores) r(); };
+  };
   const copyFigma = (el, opt) => withBusy(() => copyFigma0(el, opt || {}));
   /* Images on another domain (CDNs) cannot be downloaded from the page, so the converter used to drop them,
      and their animation with them. Try a normal download, then crop the image from one screenshot of the tab,
@@ -2406,6 +2451,7 @@
         let a = el.parentElement, c = null; while (a && !c) { const ac = getComputedStyle(a); if (toHex(ac.backgroundColor)) c = ac.backgroundColor; a = a.parentElement; }
         el.style.backgroundColor = c || "rgb(255, 255, 255)"; bgSet = true;
       }
+      const unmerge = mergeRestingWords(el, new Set((m && m.items || []).map((it) => it.path)));
       try {
         /* 2. capture the layers on that frame */
         const r = el.getBoundingClientRect();
@@ -2415,7 +2461,7 @@
         const f = globalThis.__dsxFigma.createFigmaConverter({ trace: true, imageLoader: imgLoad, layout: opt.story ? "absolute" : "auto" });
         window.__dsxImgStats = imgLoad.stats;
         result = await f.convert({ element: el, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)), name: isPage ? (document.title || location.hostname) : (el.id ? "#" + el.id : selectorOf(el)) });
-      } finally { if (bgSet) el.style.backgroundColor = bg0; if (!isPage) await ask("dsx-motion-restore", 3000); /* 3. let the page play again - always: a timed-out or failed collect can still have held frames */ }
+      } finally { unmerge(); if (bgSet) el.style.backgroundColor = bg0; if (!isPage) await ask("dsx-motion-restore", 3000); /* 3. let the page play again - always: a timed-out or failed collect can still have held frames */ }
       html = result.toClipboardHtml();
       /* 4. write the keyframes onto the layers */
       try { if (m && m.items && m.items.length) { mo = globalThis.__dsxFigma.applyMotion(result, m); html = mo.html; } else if (m && m.notes) host.dataset.motionNote = m.notes.join(" "); }
