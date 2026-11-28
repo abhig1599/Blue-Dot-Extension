@@ -2379,6 +2379,116 @@
     if (root && root.nodeType === 1) { try { walk(root); } catch (e) { for (const r of restores) r(); throw e; } }
     return () => { for (const r of restores) r(); };
   };
+  function readPageSystem() {
+    const types = new Map(), colours = new Map(), spaces = new Map();
+    function addUse(map, value, usage) {
+      if (!map.has(value)) map.set(value, new Set());
+      map.get(value).add(usage);
+    }
+    const roots = [document.body];
+    for (const scope of roots) {
+      const walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT);
+      let el = scope instanceof Element ? scope : walker.nextNode();
+      for (; el; el = walker.nextNode()) {
+        if (isUI(el)) continue;
+        if (el.shadowRoot) roots.push(el.shadowRoot);
+        if (!el.getClientRects().length) continue;
+        const cs = getComputedStyle(el);
+        if (cs.visibility !== "visible") continue;
+        const hasText = Array.from(el.childNodes).some(n => n.nodeType === 3 && n.textContent.trim())
+          || el.matches("input:not([type=hidden]), textarea, select");
+        if (hasText) {
+          const semantic = el.closest('h1,h2,h3,h4,h5,h6,[role="heading"],button,a,label,small,p');
+          let role = semantic ? semantic.tagName.toUpperCase() : "Body";
+          if (semantic?.getAttribute("role") === "heading") role = "H" + (semantic.getAttribute("aria-level") || "2");
+          role = ({ P: "Body", A: "Link", BUTTON: "Button", LABEL: "Label", SMALL: "Caption" })[role] || role;
+          const type = { role, family: cs.fontFamily, size: cs.fontSize, weight: cs.fontWeight, style: cs.fontStyle, lineHeight: cs.lineHeight, tracking: cs.letterSpacing };
+          types.set(JSON.stringify(type), type);
+        }
+        const paint = (value, usage) => {
+          if (value && value !== "transparent" && value !== "none" && !/^rgba\([^)]*,\s*0\)$/.test(value) && CSS.supports("color", value)) addUse(colours, value, usage);
+        };
+        if (hasText) paint(cs.color, "Text");
+        paint(cs.backgroundColor, "Background");
+        if (el instanceof SVGGraphicsElement) { paint(cs.fill, "Fill"); paint(cs.stroke, "Stroke"); }
+        for (const edge of ["top", "right", "bottom", "left"]) {
+          if (parseFloat(cs.getPropertyValue("border-" + edge + "-width"))) paint(cs.getPropertyValue("border-" + edge + "-color"), "Border");
+        }
+        for (const prop of SPACE_PROPS) {
+          const value = cs.getPropertyValue(prop);
+          if (value.endsWith("px") && parseFloat(value)) addUse(spaces, parseFloat(value), prop.endsWith("gap") ? "gap" : prop.split("-")[0]);
+        }
+      }
+    }
+    return { types: [...types.values()], colours, spaces };
+  }
+
+  const copyReusableStyles = () => withBusy(async () => {
+    try {
+      const { types, colours, spaces } = readPageSystem();
+      const context = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      const paints = Array.from(colours, ([value, roles]) => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = value;
+        context.fillRect(0, 0, 1, 1);
+        const rgba = Array.from(context.getImageData(0, 0, 1, 1).data);
+        return { role: [...roles].join(" + "), rgba };
+      });
+      const data = { format: "blue-dot/styles/1", site: location.hostname || "Local page", types, paints, spaces: [...spaces.keys()] };
+      await navigator.clipboard.writeText(JSON.stringify(data));
+      say("Styles copied. Open Blue Dot Styles in Figma and paste.");
+    } catch (error) { say("Could not copy reusable styles. " + error.message); }
+  });
+
+  function buildSystemBoard() {
+    const { types, colours, spaces } = readPageSystem();
+    const board = document.createElement("div");
+    board.style.cssText = "all:initial;display:block;box-sizing:border-box;width:760px;padding:40px;background:white;color:#16191f;font:16px/1.45 Arial,sans-serif;text-align:left;direction:ltr";
+    const line = (text, css, parent = board) => {
+      const node = document.createElement("div");
+      node.style.cssText = "display:block;overflow-wrap:anywhere;" + css;
+      node.textContent = text;
+      parent.appendChild(node);
+      return node;
+    };
+    const heading = text => line(text, "margin:32px 0 12px;font:bold 24px/1.3 Arial");
+    const detail = text => line(text, "margin:2px 0 10px;color:#455268;font:14px/1.5 Arial");
+    line(location.hostname || document.title, "font:bold 36px/1.25 Arial");
+    detail("Page design system · " + innerWidth + " px viewport");
+    heading("Typography");
+    types.sort((a, b) => a.role.localeCompare(b.role) || parseFloat(b.size) - parseFloat(a.size));
+    for (const t of types) {
+      const sample = line(t.role + "  Aa", "");
+      Object.assign(sample.style, { fontFamily: t.family, fontSize: t.size, fontWeight: t.weight, fontStyle: t.style, lineHeight: t.lineHeight, letterSpacing: t.tracking });
+      detail(t.family + " · " + t.size + " · weight " + t.weight + " · " + t.style + " · line height " + t.lineHeight + " · tracking " + t.tracking);
+    }
+    heading("Colours");
+    for (const [value, roles] of colours) {
+      const swatch = line("", "width:64px;height:28px;border:1px solid #c8cdd5;border-radius:4px");
+      swatch.style.backgroundColor = value;
+      detail(value + " · " + [...roles].join(", "));
+    }
+    heading("Spacing");
+    for (const [value, roles] of [...spaces].sort(([a], [b]) => a - b)) {
+      line("", "height:8px;background:#506ee5;width:" + Math.min(Math.abs(value), 680) + "px");
+      detail(value + " px · " + [...roles].join(", "));
+    }
+    return board;
+  }
+
+  const copySystem = () => withBusy(async () => {
+    let board;
+    try {
+      board = buildSystemBoard();
+      const stage = document.createElement("div");
+      stage.style.cssText = "position:fixed;left:-10000px;top:0;pointer-events:none";
+      stage.appendChild(board);
+      root.appendChild(stage);
+      try { await copyFigma0(board, { system: true }); }
+      finally { stage.remove(); }
+    } catch (error) { say("Could not copy the page styles. " + error.message); }
+  });
+
   const copyFigma = (el, opt) => withBusy(() => copyFigma0(el, opt || {}));
   /* Images on another domain (CDNs) cannot be downloaded from the page, so the converter used to drop them,
      and their animation with them. Try a normal download, then crop the image from one screenshot of the tab,
@@ -2454,7 +2564,7 @@
   };
   const copyFigma0 = async (el, opt = {}) => {
     const isPage = el === document.body || el === document.documentElement;
-    const what = isPage ? "the page" : selectorOf(el);
+    const what = opt.system ? "the design system" : isPage ? "the page" : selectorOf(el);
     /* Chrome only allows clipboard writes shortly after a click. Converting can take longer than that,
        so the write starts now, inside the click, and its content is handed over when it is ready. */
     let give, fail;
@@ -2467,7 +2577,7 @@
       if (!(await ensureFigma())) throw new Error("converter not loaded");
       const ask = (type, ms) => new Promise((res) => { const t = setTimeout(() => res(null), ms); try { chrome.runtime.sendMessage({ type }, (x) => { clearTimeout(t); res(x && x.ok ? x.data : null); }); } catch (e) { clearTimeout(t); res(null); } });
       /* 1. find the motion and pause every animation on its most visible frame */
-      if (!isPage) { el.setAttribute("data-dsx-root", opt.story ? "figma-story" : "1"); m = await ask("dsx-motion-collect", 12000); el.removeAttribute("data-dsx-root"); }
+      if (!isPage && !opt.system) { el.setAttribute("data-dsx-root", opt.story ? "figma-story" : "1"); m = await ask("dsx-motion-collect", 12000); el.removeAttribute("data-dsx-root"); }
       let result;
       /* a section with no background of its own sits on the page's background: give the copy what you actually see */
       const bg0 = el.style.backgroundColor, cs0 = getComputedStyle(el);
@@ -2485,8 +2595,8 @@
            moving parts line up with their keyframes */
         const f = globalThis.__dsxFigma.createFigmaConverter({ trace: true, imageLoader: imgLoad, layout: opt.story ? "absolute" : "auto" });
         window.__dsxImgStats = imgLoad.stats;
-        result = await f.convert({ element: el, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)), name: isPage ? (document.title || location.hostname) : (el.id ? "#" + el.id : selectorOf(el)) });
-      } finally { unmerge(); if (bgSet) el.style.backgroundColor = bg0; if (!isPage) await ask("dsx-motion-restore", 3000); /* 3. let the page play again - always: a timed-out or failed collect can still have held frames */ }
+        result = await f.convert({ element: el, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)), name: opt.system ? (location.hostname + " · Design system") : isPage ? (document.title || location.hostname) : (el.id ? "#" + el.id : selectorOf(el)) });
+      } finally { unmerge(); if (bgSet) el.style.backgroundColor = bg0; if (!isPage && !opt.system) await ask("dsx-motion-restore", 3000); /* 3. let the page play again - always: a timed-out or failed collect can still have held frames */ }
       html = result.toClipboardHtml();
       /* 4. write the keyframes onto the layers */
       try { if (m && m.items && m.items.length) { mo = globalThis.__dsxFigma.applyMotion(result, m); html = mo.html; } else if (m && m.notes) host.dataset.motionNote = m.notes.join(" "); }
@@ -3470,6 +3580,8 @@
       + `<button data-a="select">${ic('<path d="M3 3h9v5M3 3v9h4"/><path d="m9 9 6.5 2.4-2.9 1.2-1.2 2.9z"/>')}<span><b>An element</b><small>Click any part of the page</small></span><kbd>${MAC ? "\u2325" : "Alt+"}G</kbd></button>`
       + `<button data-a="section">${ic('<rect x="2.5" y="3" width="13" height="12" rx="2"/><path d="M2.5 7.5h13M6 10.5h6M6 12.5h4"/><path d="M14.5 1.5l1 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5L13 3.5l1.5-.5z" fill="currentColor" stroke="none"/>')}<span><b>A section with its motion</b><small>Scroll and loops become a Figma timeline</small></span><span class="pro">PRO</span></button>`
       + `<button data-a="design">${ic('<rect x="2.500" y="3.500" width="13" height="11" rx="2"/><path d="M2.500 7h13"/>')}<span><b>Whole page</b><small>Every section as editable layers</small></span></button>`
+      + `<button data-a="styles">${ICONS.figma}<span><b>Copy reusable styles</b><small>Paste in the Blue Dot Styles Figma plugin</small></span></button>`
+      + `<button data-a="system">${ICONS.space}<span><b>Page design system</b><small>Type hierarchy, colour swatches and spacing</small></span></button>`
       + `<div class="fmh">Copy as code</div>`
       + `<button data-a="code">${ic('<path d="M6.5 3C5 3 4.5 3.8 4.5 5v1.5C4.5 7.6 3.8 8.5 2.8 9c1 .5 1.7 1.4 1.7 2.5V13c0 1.2.5 2 2 2M11.5 3c1.5 0 2 .8 2 2v1.5c0 1.1.7 2 1.7 2.5-1 .5-1.7 1.4-1.7 2.5V13c0 1.2-.5 2-2 2"/>')}<span><b>An element as code</b><small>React or HTML + CSS</small></span></button>`;
     root.appendChild(m); figMenu = m;
@@ -3493,6 +3605,8 @@
       if (a === "screen") return shotScreen();
       if (a === "visible") return shotVisible();
       if (a === "full") return fullShot();
+      if (a === "styles") return copyReusableStyles();
+      if (a === "system") return copySystem();
       if (a === "design") { finishOpen = false; rp.classList.remove("show"); copyFigma(document.body); }
       else if (a === "select") armFigma(true);
       else if (a === "section") armSection();

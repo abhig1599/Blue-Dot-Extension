@@ -6,7 +6,15 @@
 3. Click "Load unpacked" and pick the unzipped folder.
 4. Pin the extension, open any website, click its icon. Click again (or the X) to close.
 
+## Import reusable Figma styles
+
+1. In Figma desktop, open a Design file. Under **Plugins → Development → Import plugin from manifest**, select the **figma-styles/manifest.json** inside this extension folder. This setup is needed once.
+2. In Chrome, open the source page and choose **Blue Dot → Figma → Copy reusable styles**.
+3. In Figma, run **Blue Dot Styles** from the Development menu and paste in its box. Text and paint styles appear in Local styles, grouped by website. Spacing appears as number variables in a site-specific collection. Repeating the same import skips entries already created.
+4. Apply a text or fill style to a layer using its style picker. The importer uses fonts available in Figma and reports substitutions. The original font stack is in the text style description.
+
 ## Use it
+- **Figma → Page design system** copies a style board from the current page. Paste on the Figma canvas to compare heading and body font stacks, weights, sizes, line heights and tracking alongside colour swatches and spacing values. The board contains editable layers. Shared Figma styles and variables can be created separately. The capture reflects the current viewport and loaded content.
 - Colours / Text / Spacing: lists the site's design system. Names come from the site's CSS variables (e.g. --color-ink = "Ink"), otherwise generic (Text 1, Surface 2, Accent 1, Heading 1). Change a value and every use on the page updates.
 - Select element: hover to highlight, click to see colour, background, border, font, size, line height, tracking, padding, margin, radius, with variable names where they match. Edit any value live. Esc exits picking.
 - Review: audits the page (accessibility, UX heuristics, visual quality), lists findings with severity, reason and offending elements. Click an element in a finding to jump to it. Automated subset only, not a full compliance audit.

@@ -1,5 +1,8 @@
 # Blue Dot
 
+**Reusable Figma styles.** Copy a page’s typography, colours and spacing from the extension and paste in the included Blue Dot Styles Figma importer. [Setup and usage](MVP/README.md#import-reusable-figma-styles)
+
+
 A live design-system inspector for designers, as a Chrome extension. Open any website, see its colours, type and spacing, change them live, show a client the before and after, then hand the developer an exact list of what changed.
 
 Built for client sessions: edits are temporary, nothing is saved unless you save a session, and nothing leaves your browser.

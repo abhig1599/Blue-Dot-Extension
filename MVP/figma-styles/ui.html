@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8">
+<style>
+  body { margin:20px; font:14px/1.5 Inter,system-ui,sans-serif; color:var(--figma-color-text); background:var(--figma-color-bg) }
+  textarea { width:100%; box-sizing:border-box; padding:12px; font:inherit; color:inherit; background:var(--figma-color-bg-secondary); border:1px solid var(--figma-color-border); border-radius:6px }
+</style>
+<label for="paste">In Blue Dot, choose <b>Figma → Copy reusable styles</b>. Paste below to add them to this file.</label>
+<p><textarea id="paste" autofocus rows="2" placeholder="Paste styles here"></textarea></p>
+<p id="status" role="status"></p>
+<script>
+  const input = document.querySelector("textarea");
+  const status = document.querySelector("#status");
+  input.onpaste = e => {
+    e.preventDefault();
+    try {
+      const pack = JSON.parse(e.clipboardData.getData("text/plain"));
+      if (pack.format !== "blue-dot/styles/1") throw Error();
+      input.disabled = true;
+      status.textContent = "Importing styles…";
+      parent.postMessage({pluginMessage: pack}, "*");
+    } catch { status.textContent = "Copy reusable styles from Blue Dot and paste again."; }
+  };
+  onmessage = e => {
+    status.textContent = e.data.pluginMessage;
+    input.disabled = false;
+    input.focus();
+  };
+</script>

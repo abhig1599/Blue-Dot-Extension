@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Blue Dot",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "description": "Blue Dot: inspect a site's design system (colours, type, spacing), pick elements, and live-try changes. Edits are temporary unless you capture before/after images.",
   "permissions": [
     "activeTab",
